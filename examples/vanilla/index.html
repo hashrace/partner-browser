@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HashMach iframe demo (vanilla)</title>
+    <style>
+        html, body, #game { margin: 0; height: 100%; }
+        #log { position: fixed; bottom: 0; left: 0; right: 0; max-height: 30%; overflow: auto; background: #111; color: #0f0; font: 12px monospace; padding: 4px; }
+    </style>
+</head>
+<body>
+    <div id="game"></div>
+    <pre id="log"></pre>
+    <script type="module">
+        // 本地开发把下面一行换成 `from './path/to/@hashrace/partner-sdk/dist/index.mjs'`
+        // 或经由你的打包器 `import { embedHashraceIframe } from '@hashrace/partner-sdk'`
+        import { embedHashraceIframe } from 'https://unpkg.com/@hashrace/partner-sdk';
+
+        const log = (msg) => {
+            const el = document.getElementById('log');
+            el.textContent += msg + '\n';
+            el.scrollTop = el.scrollHeight;
+        };
+
+        // 真实场景：launchUrl 来自 Partner 后端调用 HashMach 的 /api/v1/partner/launch-session
+        // 返回的响应。Partner 后端持有 API Key，不要把 API Key 下发到浏览器。
+        const launchUrl = new URLSearchParams(window.location.search).get('launchUrl');
+        if (!launchUrl) {
+            document.getElementById('game').innerText = 'missing ?launchUrl=...';
+        } else {
+            const { client } = embedHashraceIframe({
+                launchUrl: decodeURIComponent(launchUrl),
+                container: document.getElementById('game'),
+                onSecurityViolation: (reason, detail) => log('[violation] ' + reason + ' ' + JSON.stringify(detail)),
+            });
+            client.on('iframe.ready', (p) => log('iframe ready: ' + JSON.stringify(p)));
+            client.on('iframe.round_start', (p) => log('round start: ' + p.round_id));
+            client.on('iframe.round_end', (p) => log('round end: net=' + p.net_change_minor + ' ' + p.currency));
+            client.on('iframe.error', (p) => log('iframe error: ' + p.code + ' ' + p.message));
+            client.on('iframe.exit_request', (p, ack) => {
+                log('iframe wants to exit: ' + p.reason);
+                ack({ accepted: true });
+                // 然后 Partner 页面自行关闭 iframe / 跳转大厅
+            });
+        }
+    </script>
+</body>
+</html>
