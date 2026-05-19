@@ -8,11 +8,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Renamed
 
 - **BREAKING (package name only)**: Renamed from `@hashrace/partner-sdk` to
-  `@hashrace/partner-browser`. The old package is marked deprecated on npm
-  pointing here. API surface unchanged — only the package name + import path
-  change. Browser SDK is now namespaced separately from future server SDKs
-  (`@hashrace/partner-node`, `@hashrace/partner-go`, etc., following the
-  Stripe/Plaid/Twilio convention).
+  `@hashrace/partner-browser`. API surface unchanged — only the package name +
+  import path change. Browser SDK is now namespaced separately from future
+  server SDKs (`@hashrace/partner-node`, `@hashrace/partner-go`, etc., following
+  the Stripe/Plaid/Twilio convention).
+
+### Distribution
+
+- **No longer published to npm registry**. Switched to GitHub git-ref install:
+  consumer adds `"@hashrace/partner-browser": "github:hashrace/hashmach-partner-browser#vX.Y.Z"`
+  to `dependencies` and npm/yarn/pnpm clones the repo at the tag, runs the
+  `prepare` script (`npm run build`, ~2s tsup), packs `dist/` + metadata
+  per `files` field, installs into `node_modules`. No npm org / NPM_TOKEN /
+  separate dist mirror repo needed.
 
 ### Added
 
@@ -33,8 +41,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Compatibility
 
 - All 0.1.x API surface (`createPartnerClient` / `embedHashraceIframe` base
-  shape) remains source-compatible. The only mandatory migration is the
-  import path: `@hashrace/partner-sdk` → `@hashrace/partner-browser`.
+  shape) remains source-compatible. The only mandatory migrations are:
+  1. Package source: previously not published; now via
+     `"@hashrace/partner-browser": "github:hashrace/hashmach-partner-browser#v0.2.0"`
+  2. Import path: `@hashrace/partner-sdk` → `@hashrace/partner-browser`
 - The `allow` attribute string emitted by `embedHashraceIframe` now defaults
   to the four-permission baseline above. Partners who depended on the prior
   `'payment; fullscreen'` shape must pass `iframeAllow: 'payment; fullscreen'`

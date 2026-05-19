@@ -1,13 +1,8 @@
 # @hashrace/partner-browser
 
-> **改名通知（2026-05-19）**：本包从 `@hashrace/partner-sdk` 改名为 `@hashrace/partner-browser`，首版新名为 `0.2.0`。如果你之前用 `@hashrace/partner-sdk@0.1.0`，请改为：
+> **改名通知（2026-05-19）**：本包从 `@hashrace/partner-sdk` 改名为 `@hashrace/partner-browser`，首版新名为 `0.2.0`。import 路径全部从 `@hashrace/partner-sdk` 改为 `@hashrace/partner-browser`；其他 API surface（`createPartnerClient` / `embedHashraceIframe`）完全兼容。改名原因：浏览器 SDK 与未来 server SDK（`@hashrace/partner-node` / `partner-go` / `partner-php` / `partner-python` 等）共享 `@hashrace/partner-` 命名空间，按运行环境/语言后缀区分（参考 Stripe / Plaid / Twilio 业界约定）。
 >
-> ```bash
-> npm uninstall @hashrace/partner-sdk
-> npm install @hashrace/partner-browser
-> ```
->
-> import 路径全部从 `@hashrace/partner-sdk` 改为 `@hashrace/partner-browser`；其他 API surface（`createPartnerClient` / `embedHashraceIframe`）完全兼容。改名原因：浏览器 SDK 与未来 server SDK（`@hashrace/partner-node` / `partner-go` / `partner-php` / `partner-python` 等）共享 `@hashrace/partner-` 命名空间，按运行环境/语言后缀区分（参考 Stripe / Plaid / Twilio 业界约定）。
+> **发布机制（2026-05-19）**：本包**不发布到 npm registry**，直接通过 GitHub git ref 安装；详见下方 §Install。
 
 Official browser-side postMessage SDK for embedding HashMach games in Partner websites.
 
@@ -18,9 +13,24 @@ the SDK is the reference implementation for the parent side.
 
 ## Install
 
-```bash
-npm install @hashrace/partner-browser
+本包不在 npm registry 上。consumer 通过 GitHub git ref 直接安装：
+
+```json
+{
+  "dependencies": {
+    "@hashrace/partner-browser": "github:hashrace/hashmach-partner-browser#v0.2.0"
+  }
+}
 ```
+
+然后 `npm install`。`github:owner/repo#tag` 语法 npm 7+ / yarn 1.22+ / pnpm 6+ 都原生支持。安装时 npm 在 consumer 一侧自动 clone 本仓 + 装 devDeps + 跑 `prepare` 脚本（即 `tsup` 构建），把 `dist/` 产物 + 包元数据装入 `node_modules/@hashrace/partner-browser`——consumer 一侧零额外配置。
+
+- 包名 `@hashrace/partner-browser` 来自 `package.json` 的 `name` 字段
+- 版本通过 git tag 锁定，与 npm semver 一一对应
+- 升级换 tag 即可（如 `#v0.3.0`），无 lockfile range 漂移风险
+- 首次 install 多几秒构建时间（~2 秒 tsup），后续 install 走 npm 缓存
+
+**为什么不走 npm registry？** Hashrace 当前未启用 npm 组织付费账号；GitHub git-ref install 提供等价的版本锁定 + 公开访问能力，零运营成本。
 
 Zero runtime dependencies. ES Module + CommonJS + `.d.ts` ship together.
 

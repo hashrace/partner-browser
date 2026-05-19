@@ -1,24 +1,71 @@
-name: Publish
+name: Release
+
+# 单仓模式：consumer 通过 github:hashrace/hashmach-partner-browser#vX.Y.Z 直接 install。
+# npm 会在 consumer 一侧 clone 源仓 + 装 devDeps + 跑 prepare 脚本（npm run build）生成 dist/。
+# 本 workflow 只做：tag 校验 + 全量回归（typecheck/lint/test/build/size）+ 创建 GitHub Release。
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # 创建 GitHub Release 需要
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout 源仓（含完整 tag 历史）
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
-      - run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: 从 tag 提取 VERSION + 校验 semver 格式
+        run: |
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          if ! echo "$TAG_VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$'; then
+            echo "::error::tag '$TAG_VERSION' 不是合法 semver 格式"
+            exit 1
+          fi
+          echo "TAG_VERSION=$TAG_VERSION" >> $GITHUB_ENV
+          echo "[tag] v$TAG_VERSION"
+
+      - name: 校验 package.json version 与 tag 一致
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::package.json version ($PKG_VERSION) ≠ tag v$TAG_VERSION—— 请先 npm version 同步 package.json 再打 tag"
+            exit 1
+          fi
+
+      # npm ci 会触发 prepare 脚本（即 npm run build），所以 ci 一步就完成依赖装 + 构建。
+      # 后续 typecheck/lint/test 再次验证（在 dist/ 已就位的前提下）。
+      - name: 安装 + build（prepare 钩子触发）
+        run: npm ci
+
+      - name: typecheck
+        run: npm run typecheck
+
+      - name: lint
+        run: npm run lint
+
+      - name: test
+        run: npm test
+
+      - name: Bundle size guard
+        run: |
+          node -e "const s=require('fs').statSync('dist/index.mjs').size; if (s > 15000) { throw new Error('bundle too big: ' + s); }"
+
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          tag_name: ${{ github.ref_name }}
