@@ -1,5 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { embedHashraceIframe, type PartnerClient } from '@hashrace/partner-sdk';
+// 0.2.0 起 embedHashraceIframe 自动注入四项 allow 权限：
+//   web-share / clipboard-write / screen-wake-lock / fullscreen
+// （对齐 PG Soft / Pragmatic Play B2B 基线，详见 CHANGELOG）。
+// 不想要这层默认值时传 iframeAllow: '' 或自定义字符串。
+import { embedHashraceIframe, type PartnerClient } from '@hashrace/partner-browser';
 
 /**
  * React 版 HashMach iframe 容器。

@@ -1,11 +1,11 @@
 {
-  "name": "@hashrace/partner-sdk",
-  "version": "0.1.0",
-  "description": "postMessage SDK for embedding HashMach games in Partner websites (hashrace.v1 protocol)",
-  "keywords": ["hashrace", "hashmach", "iframe", "postmessage", "seamless-wallet"],
+  "name": "@hashrace/partner-browser",
+  "version": "0.2.0",
+  "description": "Browser-side postMessage SDK for embedding HashMach games in Partner websites (hashrace.v1 protocol). Renamed from @hashrace/partner-sdk in v0.2.0.",
+  "keywords": ["hashrace", "hashmach", "iframe", "postmessage", "seamless-wallet", "popup"],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hashrace/hashmach-partner-sdk.git"
+    "url": "git+https://github.com/hashrace/hashmach-partner-browser.git"
   },
   "license": "MIT",
   "type": "module",

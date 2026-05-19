@@ -12,9 +12,14 @@
     <div id="game"></div>
     <pre id="log"></pre>
     <script type="module">
-        // 本地开发把下面一行换成 `from './path/to/@hashrace/partner-sdk/dist/index.mjs'`
-        // 或经由你的打包器 `import { embedHashraceIframe } from '@hashrace/partner-sdk'`
-        import { embedHashraceIframe } from 'https://unpkg.com/@hashrace/partner-sdk';
+        // 0.2.0 起 embedHashraceIframe 自动注入
+        //   allow="web-share *; clipboard-write *; screen-wake-lock *; fullscreen *"
+        // 四项浏览器权限（对齐 PG Soft / Pragmatic Play B2B 基线）。若需 opt-out
+        // 传 iframeAllow: ''；自定义覆盖传 iframeAllow: '<your-string>'。
+        //
+        // 本地开发把下面一行换成 `from './path/to/@hashrace/partner-browser/dist/index.mjs'`
+        // 或经由你的打包器 `import { embedHashraceIframe } from '@hashrace/partner-browser'`
+        import { embedHashraceIframe } from 'https://unpkg.com/@hashrace/partner-browser';
 
         const log = (msg) => {
             const el = document.getElementById('log');

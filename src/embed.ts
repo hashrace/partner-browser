@@ -1,4 +1,5 @@
 import { createPartnerClient, PartnerClient } from './client';
+import { DEFAULT_IFRAME_ALLOW } from './popup';
 
 /**
  * embedHashraceIframe 参数。
@@ -25,6 +26,12 @@ export interface EmbedOptions {
     onSecurityViolation?: (reason: string, detail: unknown) => void;
     /** iframe 的 title 属性（a11y 要求），默认 "HashMach Game"。 */
     title?: string;
+    /**
+     * iframe `allow` 属性值。默认 DEFAULT_IFRAME_ALLOW（与 PG Soft / Pragmatic Play
+     * 等 B2B 厂商基线对齐：web-share / clipboard-write / screen-wake-lock / fullscreen）。
+     * 传空字符串 `''` 可显式 opt-out（不设 allow 属性）；传自定义字符串可完全覆盖。
+     */
+    iframeAllow?: string;
 }
 
 /**
@@ -43,14 +50,15 @@ export interface EmbedResult {
  * 默认配置：
  *   - HTTPS only：launchUrl 必须是 https，否则抛错
  *   - referrerpolicy=strict-origin-when-cross-origin：保护 Partner 内部 URL 不泄漏
- *   - allow=payment; fullscreen：允许 Payment Request API + 全屏
+ *   - allow=DEFAULT_IFRAME_ALLOW（四项 B2B 基线权限）：避免游戏内 navigator.share /
+ *     clipboard / fullscreen / wakeLock 在 iframe 内静默失败
  *   - 不设 sandbox：Seamless 架构下 iframe 需要正常发 HTTPS 请求和 postMessage；
  *     Partner 若需额外限制请在返回的 iframe 元素上自行设置
  */
 export function embedHashraceIframe(opts: EmbedOptions): EmbedResult {
     const url = new URL(opts.launchUrl);
     if (url.protocol !== 'https:') {
-        throw new Error('[@hashrace/partner-sdk] launchUrl must be https');
+        throw new Error('[@hashrace/partner-browser] launchUrl must be https');
     }
     const origin = opts.expectedChildOrigin ?? url.origin;
 
@@ -60,8 +68,10 @@ export function embedHashraceIframe(opts: EmbedOptions): EmbedResult {
     iframe.height = opts.height ?? '100%';
     iframe.style.border = '0';
     iframe.title = opts.title ?? 'HashMach Game';
-    // Payment Request API 部分 Partner 场景需要；fullscreen 支持全屏游戏
-    iframe.setAttribute('allow', 'payment; fullscreen');
+    const allow = opts.iframeAllow ?? DEFAULT_IFRAME_ALLOW;
+    if (allow) {
+        iframe.setAttribute('allow', allow);
+    }
     iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
     opts.container.appendChild(iframe);
 

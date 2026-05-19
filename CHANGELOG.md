@@ -1,9 +1,47 @@
 # Changelog
 
-All notable changes to `@hashrace/partner-sdk` are documented here.
+All notable changes to `@hashrace/partner-browser` are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## 0.1.0 — 2026-04-22
+## 0.2.0 — 2026-05-19
+
+### Renamed
+
+- **BREAKING (package name only)**: Renamed from `@hashrace/partner-sdk` to
+  `@hashrace/partner-browser`. The old package is marked deprecated on npm
+  pointing here. API surface unchanged — only the package name + import path
+  change. Browser SDK is now namespaced separately from future server SDKs
+  (`@hashrace/partner-node`, `@hashrace/partner-go`, etc., following the
+  Stripe/Plaid/Twilio convention).
+
+### Added
+
+- `launchInPopup(options)` helper for popup-window game launch (PG SOFT-style).
+  Opens an HashMach-controlled `about:blank` wrapper window, injects a relay
+  iframe + script, and exposes a `PopupHandle` whose `on/off/send` surface
+  matches `PartnerClient`. Handles popup blockers, cross-window relaying of
+  `hashrace.v1` envelopes, and `onClosed` lifecycle.
+- `DEFAULT_IFRAME_ALLOW` constant exported with value
+  `'web-share *; clipboard-write *; screen-wake-lock *; fullscreen *'` — aligns
+  with PG Soft / Pragmatic Play baseline so the four standard B2B iframe
+  permissions are on by default.
+- `embedHashraceIframe` now auto-injects the `allow` attribute using
+  `DEFAULT_IFRAME_ALLOW`. The previous default `'payment; fullscreen'` is
+  replaced. Callers can override via the new `iframeAllow` option; passing
+  `''` opts out of the attribute entirely.
+
+### Compatibility
+
+- All 0.1.x API surface (`createPartnerClient` / `embedHashraceIframe` base
+  shape) remains source-compatible. The only mandatory migration is the
+  import path: `@hashrace/partner-sdk` → `@hashrace/partner-browser`.
+- The `allow` attribute string emitted by `embedHashraceIframe` now defaults
+  to the four-permission baseline above. Partners who depended on the prior
+  `'payment; fullscreen'` shape must pass `iframeAllow: 'payment; fullscreen'`
+  explicitly, or merge the values they need.
+- New `iframeAllow` parameter on `embedHashraceIframe` is optional.
+
+## 0.1.0 — 2026-04-22 (published as `@hashrace/partner-sdk`)
 
 ### Added
 

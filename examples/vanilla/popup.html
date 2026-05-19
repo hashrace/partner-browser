@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <title>HashMach popup demo (vanilla)</title>
+    <style>
+        body { font: 14px system-ui; padding: 24px; max-width: 600px; }
+        button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+        button:disabled { cursor: not-allowed; opacity: 0.6; }
+        #status { margin-top: 16px; padding: 12px; background: #f5f5f5; border-radius: 4px; min-height: 1.5em; }
+        #log { margin-top: 8px; background: #111; color: #0f0; font: 12px monospace; padding: 8px; max-height: 240px; overflow: auto; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>HashMach 游戏（popup 模式）</h1>
+    <p>点击下方按钮在新窗口启动游戏。与 iframe 嵌入相比，popup 模式让游戏独占
+       一个浏览器窗口，不占用 Partner 父页空间——形态对齐 PG SOFT 等行业 popup 启动器。</p>
+    <button id="play">运行游戏</button>
+    <div id="status">未启动</div>
+    <pre id="log"></pre>
+    <script type="module">
+        // 本地开发把下面一行换成 `from './path/to/@hashrace/partner-browser/dist/index.mjs'`
+        // 或经由你的打包器 `import { launchInPopup } from '@hashrace/partner-browser'`
+        import { launchInPopup } from 'https://unpkg.com/@hashrace/partner-browser';
+
+        const status = (msg) => { document.getElementById('status').textContent = msg; };
+        const log = (msg) => {
+            const el = document.getElementById('log');
+            el.textContent += msg + '\n';
+            el.scrollTop = el.scrollHeight;
+        };
+
+        // 真实场景：launchUrl 由 Partner 后端调用 HashMach /api/v1/partner/launch-session
+        // 获取，不要把 API Key 下发到浏览器。本 demo 直接从 URL query 拿。
+        const launchUrl = decodeURIComponent(
+            new URLSearchParams(window.location.search).get('launchUrl') || ''
+        );
+
+        document.getElementById('play').addEventListener('click', () => {
+            if (!launchUrl) {
+                status('缺少 ?launchUrl=... query 参数');
+                return;
+            }
+
+            const handle = launchInPopup({
+                launchUrl,
+                window: { width: 1280, height: 720 },
+                onPopupBlocked: () => {
+                    status('弹窗被浏览器拦截，请在浏览器设置中允许本站弹窗后重试');
+                },
+                onSecurityViolation: (reason, detail) => {
+                    log('[violation] ' + reason + ' ' + JSON.stringify(detail));
+                },
+            });
+            if (!handle) return;
+
+            status('游戏窗口已启动');
+            log('popup opened');
+
+            handle.on('iframe.ready', (p) => log('iframe ready: ' + JSON.stringify(p)));
+            handle.on('iframe.round_start', (p) => log('round start: ' + p.round_id));
+            handle.on('iframe.round_end', (p) => {
+                log('round end: net=' + p.net_change_minor + ' ' + p.currency);
+                // 此处可触发 Partner 自家钱包余额刷新 UI
+            });
+            handle.on('iframe.error', (p) => log('iframe error: ' + p.code + ' ' + p.message));
+            handle.on('iframe.exit_request', (p, ack) => {
+                log('iframe wants to exit: ' + p.reason);
+                ack({ accepted: true });
+            });
+
+            handle.onClosed(() => {
+                status('游戏窗口已关闭');
+                log('popup closed');
+                // 此处可触发回到 Partner 大厅 / 刷新余额
+            });
+        });
+    </script>
+</body>
+</html>

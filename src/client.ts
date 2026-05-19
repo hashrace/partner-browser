@@ -138,7 +138,7 @@ export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
         send(event, payload) {
             if (FORBIDDEN_DOWN_EVENTS.includes(event as string)) {
                 throw new Error(
-                    `[@hashrace/partner-sdk] forbidden event: ${String(event)} — this event must not be sent from Partner page; route through Seamless Wallet / server-side channel instead.`,
+                    `[@hashrace/partner-browser] forbidden event: ${String(event)} — this event must not be sent from Partner page; route through Seamless Wallet / server-side channel instead.`,
                 );
             }
             opts.iframe.contentWindow?.postMessage(

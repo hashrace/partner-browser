@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { embedHashraceIframe } from '../embed';
+import { DEFAULT_IFRAME_ALLOW } from '../popup';
 
 describe('embedHashraceIframe', () => {
     beforeEach(() => { document.body.innerHTML = ''; });
 
-    it('creates iframe with correct attributes and appends to container', () => {
+    it('creates iframe with correct default attributes and appends to container', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const { iframe } = embedHashraceIframe({
@@ -14,7 +15,10 @@ describe('embedHashraceIframe', () => {
         expect(iframe.src).toBe('https://app.hashrace.com/lobby?launch=lt_abc');
         expect(iframe.getAttribute('referrerpolicy')).toBe('strict-origin-when-cross-origin');
         const allowAttr = iframe.getAttribute('allow') ?? '';
-        expect(allowAttr).toContain('payment');
+        expect(allowAttr).toBe(DEFAULT_IFRAME_ALLOW);
+        expect(allowAttr).toContain('web-share');
+        expect(allowAttr).toContain('clipboard-write');
+        expect(allowAttr).toContain('screen-wake-lock');
         expect(allowAttr).toContain('fullscreen');
         expect(iframe.title).toBe('HashMach Game');
         expect(iframe.parentElement).toBe(container);
@@ -72,5 +76,27 @@ describe('embedHashraceIframe', () => {
             expectedChildOrigin: 'https://app-eu.hashrace.com',
         });
         expect(typeof client.on).toBe('function');
+    });
+
+    it('iframeAllow custom value fully overrides default', () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const { iframe } = embedHashraceIframe({
+            launchUrl: 'https://app.hashrace.com/lobby',
+            container,
+            iframeAllow: 'camera *; microphone *',
+        });
+        expect(iframe.getAttribute('allow')).toBe('camera *; microphone *');
+    });
+
+    it('iframeAllow === "" opts out of allow attribute entirely', () => {
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        const { iframe } = embedHashraceIframe({
+            launchUrl: 'https://app.hashrace.com/lobby',
+            container,
+            iframeAllow: '',
+        });
+        expect(iframe.hasAttribute('allow')).toBe(false);
     });
 });
