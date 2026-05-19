@@ -4,8 +4,8 @@ Official postMessage SDK for embedding HashMach games in Partner websites.
 
 Implements the `hashrace.v1` channel: the contract between a Partner-owned parent
 page and an embedded HashMach iframe. The protocol itself is defined in
-[hashmach-docs](https://github.com/hashrace/hashmach-docs) under `services/partner/`
-and `global/specs/` — the SDK is the reference implementation for the parent side.
+[hashmach-docs `architecture/iframe-postmessage.md`](https://github.com/hashrace/hashmach-docs/blob/main/architecture/iframe-postmessage.md) —
+the SDK is the reference implementation for the parent side.
 
 ## Install
 
