@@ -1,6 +1,6 @@
 name: Release
 
-# 单仓模式：consumer 通过 github:hashrace/hashmach-partner-browser#vX.Y.Z 直接 install。
+# 单仓模式：consumer 通过 github:hashrace/partner-browser#vX.Y.Z 直接 install。
 # npm 会在 consumer 一侧 clone 源仓 + 装 devDeps + 跑 prepare 脚本（npm run build）生成 dist/。
 # 本 workflow 只做：tag 校验 + 全量回归（typecheck/lint/test/build/size）+ 创建 GitHub Release。
 
