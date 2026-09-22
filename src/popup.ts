@@ -1,9 +1,11 @@
 import {
     CHANNEL,
+    DOWN_EVENT_NAMES,
     DownEventMap,
     DownEventName,
-    FORBIDDEN_DOWN_EVENTS,
+    UP_EVENT_NAMES,
     UpEventName,
+    assertSendableDownEvent,
 } from './events';
 import type { AckSender, UpHandler } from './client';
 
@@ -31,7 +33,7 @@ export interface LaunchInPopupOptions {
     /** 游戏启动 URL（含 launch_token query）。必须 https:// 或 http://localhost。 */
     launchUrl: string;
     /**
-     * 期望的 HashMach iframe 侧 origin。默认从 launchUrl 解析，多环境可传数组。
+     * 期望的 Hashrace iframe 侧 origin。默认从 launchUrl 解析，多环境可传数组。
      */
     expectedChildOrigin?: string | readonly string[];
     /** popup window 尺寸 + 位置。默认 1280 × 720。 */
@@ -62,7 +64,7 @@ export interface PopupHandle {
     on<E extends UpEventName>(event: E, handler: UpHandler<E>): void;
     /** 取消订阅。 */
     off<E extends UpEventName>(event: E): void;
-    /** 向 iframe 发下行事件（白名单内）。FORBIDDEN_DOWN_EVENTS 会抛错。 */
+    /** 向 iframe 发下行事件。不在 DownEventMap 白名单内（含禁止事件）抛错；iframe 当前不消费下行事件。 */
     send<E extends DownEventName>(event: E, payload: DownEventMap[E]): void;
     /** 程序化关闭 popup window；自然关闭时也会触发 onClosed。 */
     close(): void;
@@ -101,32 +103,38 @@ function computeWindowFeatures(win?: LaunchInPopupOptions['window']): string {
     return features.join(',');
 }
 
-// JSON.stringify 默认不转义 '<'；嵌入 <script> 时必须自行转义，否则 launchUrl
-// 内的 `</script>` 字面可被解析器误认为闭合标签提前结束脚本。
-function jsonForScript(value: unknown): string {
-    return JSON.stringify(value).replace(/</g, '\\u003c');
+// wrapper 页的静态骨架。刻意不做任何插值：launchUrl / allow 等调用方可控的值一律经
+// DOM API 设置（见 mountWrapper），不经过 HTML 解析器。
+// 反例：把 JSON.stringify(launchUrl) 拼进 `<iframe src=...>` 属性——JSON 的 `\"` 在 HTML
+// 属性上下文里不算转义，`x"/onload=...` 这样的 launchUrl 会逃出属性注入事件处理器；
+// 而 about:blank popup 继承 opener origin，脚本会跑在 Partner 页的域上。
+const WRAPPER_SKELETON =
+    '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Hashrace</title></head>' +
+    '<body style="margin:0;background:#000"></body></html>';
+
+// 把值写成 JS 字面量嵌进 relay 脚本源码。脚本经 textContent 插入、不经 HTML 解析器，
+// 所以这里只需保证是合法 JS 表达式；转义 `<` 与 U+2028/U+2029 是纵深防御。
+function jsLiteral(value: unknown): string {
+    return JSON.stringify(value)
+        .replace(/</g, '\\u003c')
+        .replace(/\u2028/g, '\\u2028')
+        .replace(/\u2029/g, '\\u2029');
 }
 
-function buildWrapperHTML(params: {
-    launchUrl: string;
+function buildRelayScript(params: {
     expectedChildOrigin: string | readonly string[];
-    iframeAllow: string;
     openerOrigin: string;
 }): string {
-    const allowAttr = params.iframeAllow ? ` allow=${jsonForScript(params.iframeAllow)}` : '';
-    return `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>HashMach</title></head>
-<body style="margin:0;background:#000">
-<iframe src=${jsonForScript(params.launchUrl)}${allowAttr} style="width:100vw;height:100vh;border:0"></iframe>
-<script>
-(function(){
+    return `(function(){
     var iframe = document.querySelector('iframe');
-    var expected = ${jsonForScript(params.expectedChildOrigin)};
-    var openerOrigin = ${jsonForScript(params.openerOrigin)};
-    var CHANNEL = ${jsonForScript(CHANNEL)};
-    var RELAY_UP = ${jsonForScript(RELAY_UP)};
-    var RELAY_DOWN = ${jsonForScript(RELAY_DOWN)};
-    var RELAY_ACK = ${jsonForScript(RELAY_ACK)};
+    var expected = ${jsLiteral(params.expectedChildOrigin)};
+    var openerOrigin = ${jsLiteral(params.openerOrigin)};
+    var CHANNEL = ${jsLiteral(CHANNEL)};
+    var RELAY_UP = ${jsLiteral(RELAY_UP)};
+    var RELAY_DOWN = ${jsLiteral(RELAY_DOWN)};
+    var RELAY_ACK = ${jsLiteral(RELAY_ACK)};
+    var UP_EVENTS = ${jsLiteral(UP_EVENT_NAMES)};
+    var DOWN_EVENTS = ${jsLiteral(DOWN_EVENT_NAMES)};
     function isExpected(actual){
         if(!actual || actual === 'null') return false;
         var list = Array.isArray(expected) ? expected : [expected];
@@ -136,12 +144,13 @@ function buildWrapperHTML(params: {
         return Array.isArray(expected) ? expected[0] : expected;
     }
     window.addEventListener('message', function(e){
-        // iframe → opener 转发
+        // iframe → opener 转发（只转 UpEventMap 里的事件）
         if (e.source === iframe.contentWindow) {
             if (!isExpected(e.origin)) return;
             var d = e.data;
             if (!d || typeof d !== 'object') return;
             if (d.channel !== CHANNEL) return;
+            if (UP_EVENTS.indexOf(d.event) === -1) return;
             if (!window.opener) return;
             window.opener.postMessage({
                 channel: RELAY_UP,
@@ -158,6 +167,7 @@ function buildWrapperHTML(params: {
             if (!d2 || typeof d2 !== 'object') return;
             var t = targetForIframe();
             if (d2.channel === RELAY_DOWN) {
+                if (DOWN_EVENTS.indexOf(d2.event) === -1) return;
                 iframe.contentWindow.postMessage({
                     channel: CHANNEL,
                     event: d2.event,
@@ -177,9 +187,32 @@ function buildWrapperHTML(params: {
             }
         }
     });
-})();
-</script>
-</body></html>`;
+})();`;
+}
+
+// 在 popup 文档里装配 wrapper：静态骨架 → DOM API 建 iframe → 插入 relay 脚本。
+// iframe 必须先于脚本挂上，脚本执行时用 querySelector 取它。
+function mountWrapper(doc: Document, params: {
+    launchUrl: string;
+    expectedChildOrigin: string | readonly string[];
+    iframeAllow: string;
+    openerOrigin: string;
+}): void {
+    doc.open();
+    doc.write(WRAPPER_SKELETON);
+    doc.close();
+
+    const iframe = doc.createElement('iframe');
+    iframe.src = params.launchUrl;
+    if (params.iframeAllow) {
+        iframe.setAttribute('allow', params.iframeAllow);
+    }
+    iframe.style.cssText = 'width:100vw;height:100vh;border:0';
+    doc.body.appendChild(iframe);
+
+    const script = doc.createElement('script');
+    script.textContent = buildRelayScript(params);
+    doc.body.appendChild(script);
 }
 
 function makeNonce(): string {
@@ -190,11 +223,11 @@ function makeNonce(): string {
 }
 
 /**
- * 以 popup window 形式启动 HashMach 游戏。
+ * 以 popup window 形式启动 Hashrace 游戏。
  *
  * 实现机制：
  *   1. window.open('about:blank', name, features) 创建 popup（必须在 user gesture 同步路径内调用以避开 popup blocker）
- *   2. popup 内 document.write 注入 wrapper HTML（含 iframe + relay 转发脚本）
+ *   2. popup 内写入静态骨架，再用 DOM API 建 iframe、插入 relay 转发脚本（调用方传入的值不经 HTML 解析）
  *   3. wrapper 监听 iframe 上行 hashrace.v1 消息 → 转发到 window.opener
  *   4. opener 端 PopupHandle 监听 popup 发来的 hashrace.v1-relay 信封 → 路由到 on() handler
  *   5. PopupHandle.send / ack 反向走 hashrace.v1-relay-down / hashrace.v1-relay-ack 信封
@@ -228,16 +261,13 @@ export function launchInPopup(opts: LaunchInPopupOptions): PopupHandle | null {
 
     // 3. 注入 wrapper HTML
     const openerOrigin = window.location.origin;
-    const wrapperHTML = buildWrapperHTML({
-        launchUrl: opts.launchUrl,
-        expectedChildOrigin: expected,
-        iframeAllow,
-        openerOrigin,
-    });
     try {
-        popup.document.open();
-        popup.document.write(wrapperHTML);
-        popup.document.close();
+        mountWrapper(popup.document, {
+            launchUrl: url.href,
+            expectedChildOrigin: expected,
+            iframeAllow,
+            openerOrigin,
+        });
     } catch (err) {
         opts.onSecurityViolation?.('popup_write_failed', err);
         try { popup.close(); } catch { /* ignore */ }
@@ -308,11 +338,7 @@ export function launchInPopup(opts: LaunchInPopupOptions): PopupHandle | null {
             handlers.delete(event);
         },
         send(event, payload) {
-            if (FORBIDDEN_DOWN_EVENTS.includes(event as string)) {
-                throw new Error(
-                    `[@hashrace/partner-browser] forbidden event: ${String(event)} — this event must not be sent from Partner page; route through Seamless Wallet / server-side channel instead.`,
-                );
-            }
+            assertSendableDownEvent(String(event));
             if (closed || disposed) return;
             popup.postMessage(
                 {

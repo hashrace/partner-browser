@@ -1,8 +1,8 @@
 {
   "name": "@hashrace/partner-browser",
   "version": "0.2.0",
-  "description": "Browser-side postMessage SDK for embedding HashMach games in Partner websites (hashrace.v1 protocol).",
-  "keywords": ["hashrace", "hashmach", "iframe", "postmessage", "seamless-wallet", "popup"],
+  "description": "Browser-side postMessage SDK for embedding Hashrace games in Partner websites (hashrace.v1 protocol).",
+  "keywords": ["hashrace", "iframe", "postmessage", "seamless-wallet", "popup"],
   "repository": {
     "type": "git",
     "url": "git+https://github.com/hashrace/partner-browser.git"
@@ -33,6 +33,7 @@
     "prepare": "npm run build"
   },
   "devDependencies": {
+    "@types/jsdom": "^21.1.7",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",

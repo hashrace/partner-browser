@@ -20,7 +20,7 @@ describe('embedHashraceIframe', () => {
         expect(allowAttr).toContain('clipboard-write');
         expect(allowAttr).toContain('screen-wake-lock');
         expect(allowAttr).toContain('fullscreen');
-        expect(iframe.title).toBe('HashMach Game');
+        expect(iframe.title).toBe('Hashrace Game');
         expect(iframe.parentElement).toBe(container);
     });
 

@@ -101,6 +101,18 @@ describe('createPartnerClient', () => {
             .toThrow(/forbidden event/i);
     });
 
+    // 守的回归：send() 曾只查 FORBIDDEN_DOWN_EVENTS（不带命名空间），任何 `parent.*` 自造事件都能发出去。
+    it('send throws on events outside DownEventMap and posts nothing', () => {
+        const iframe = makeIframe();
+        const post = vi.fn();
+        Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: post }, writable: true });
+        const client = createPartnerClient({ iframe, expectedChildOrigin: 'https://app.hashrace.com' });
+        const send = (client as unknown as { send: (e: string, p: unknown) => void }).send;
+        expect(() => send('parent.set_balance', { amount: 1 })).toThrow(/unknown downstream event: parent\.set_balance/);
+        expect(() => send('iframe.ready', {})).toThrow(/unknown downstream event/);
+        expect(post).not.toHaveBeenCalled();
+    });
+
     it('send posts envelope with correct structure', () => {
         const iframe = makeIframe();
         const post = vi.fn();

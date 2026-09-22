@@ -1,7 +1,7 @@
 /**
  * hashrace.v1 postMessage 协议——事件 Schema 与禁止事件清单。
  *
- * 本文件定义 Partner 父页面与 HashMach iframe 之间双向消息的结构化类型。
+ * 本文件定义 Partner 父页面与 Hashrace iframe 之间双向消息的结构化类型。
  * 所有消息都用 Envelope 包裹：`{ channel, event, payload, nonce }`。
  *
  * 约定：
@@ -54,7 +54,7 @@ export interface IframeRoundStartPayload {
 
 /**
  * 一局游戏结束，含本局净输赢（微元单位）。
- * 净变动已经由 HashMach 通过 Seamless Webhook 写入 Partner 钱包；
+ * 净变动已经由 Hashrace 通过 Seamless Webhook 写入 Partner 钱包；
  * Partner 收到此事件只需刷新余额 UI，不要自己做二次记账。
  */
 export interface IframeRoundEndPayload {
@@ -75,6 +75,25 @@ export interface IframeErrorPayload {
 }
 
 /**
+ * 玩家在维护拦截屏点了「重试」：iframe 内的会话已不可恢复，要求 Partner 重新签发
+ * launch URL 并重新挂载 iframe（旧 launch token 是一次性的，不能复用）。无 payload。
+ */
+export type IframeRetryRequestPayload = Record<string, never>;
+
+/**
+ * 玩家在 iframe 内点了「联系客服」。Partner 应打开自家客服入口。无 payload。
+ */
+export type IframeSupportRequestPayload = Record<string, never>;
+
+/**
+ * 玩家离开游戏（点「返回 {品牌}」或正常退出），Partner 应收起 iframe / 回到自家大厅。
+ * 与 iframe.exit_request 不同：不需要 ack，iframe 发出后不等待父页回应。
+ */
+export interface IframeGameEndedPayload {
+    game_id: string;
+}
+
+/**
  * 上行事件名 → payload 映射表。
  */
 export interface UpEventMap {
@@ -84,9 +103,32 @@ export interface UpEventMap {
     'iframe.round_start': IframeRoundStartPayload;
     'iframe.round_end': IframeRoundEndPayload;
     'iframe.error': IframeErrorPayload;
+    'iframe.retry_request': IframeRetryRequestPayload;
+    'iframe.support_request': IframeSupportRequestPayload;
+    'iframe.game_ended': IframeGameEndedPayload;
 }
 
 export type UpEventName = keyof UpEventMap;
+
+/**
+ * UpEventMap 键的运行时清单。popup wrapper 按它过滤转发，契约测试按它对账客户端。
+ * `satisfies` + 下方的穷举断言保证它与 UpEventMap 两向一致：少列、多列都编译失败。
+ */
+export const UP_EVENT_NAMES = [
+    'iframe.ready',
+    'iframe.size_change',
+    'iframe.exit_request',
+    'iframe.round_start',
+    'iframe.round_end',
+    'iframe.error',
+    'iframe.retry_request',
+    'iframe.support_request',
+    'iframe.game_ended',
+] as const satisfies readonly UpEventName[];
+
+type MissingUpEvents = Exclude<UpEventName, (typeof UP_EVENT_NAMES)[number]>;
+const upEventsExhaustive: [MissingUpEvents] extends [never] ? true : MissingUpEvents = true;
+void upEventsExhaustive;
 
 // ============================================================================
 // parent → iframe（下行，仅允许这些事件）
@@ -123,7 +165,10 @@ export type ParentPausePayload = Record<string, never>;
 export type ParentResumePayload = Record<string, never>;
 
 /**
- * 下行事件名 → payload 映射表。
+ * 下行事件名 → payload 映射表，同时是 `send()` 的白名单：不在表里的事件名一律拒发。
+ *
+ * 注意：iframe 侧当前**没有消费任何下行事件**，发出去不会有效果；保留这组类型是为了
+ * 协议已定的事件名不被随意占用。
  */
 export interface DownEventMap {
     'parent.resize': ParentResizePayload;
@@ -135,6 +180,36 @@ export interface DownEventMap {
 
 export type DownEventName = keyof DownEventMap;
 
+/** DownEventMap 键的运行时清单，`send()` 按它做白名单校验。穷举约束同 UP_EVENT_NAMES。 */
+export const DOWN_EVENT_NAMES = [
+    'parent.resize',
+    'parent.close_request',
+    'parent.visibility_change',
+    'parent.pause',
+    'parent.resume',
+] as const satisfies readonly DownEventName[];
+
+type MissingDownEvents = Exclude<DownEventName, (typeof DOWN_EVENT_NAMES)[number]>;
+const downEventsExhaustive: [MissingDownEvents] extends [never] ? true : MissingDownEvents = true;
+void downEventsExhaustive;
+
+/**
+ * 下行事件白名单校验，`PartnerClient.send` 与 `PopupHandle.send` 共用。
+ * 类型层已经约束了事件名，这里防的是 JS 调用方或 `as any` 绕过类型。
+ */
+export function assertSendableDownEvent(event: string): void {
+    if (FORBIDDEN_DOWN_EVENTS.includes(event)) {
+        throw new Error(
+            `[@hashrace/partner-browser] forbidden event: ${event} — this event must not be sent from Partner page; route through Seamless Wallet / server-side channel instead.`,
+        );
+    }
+    if (!(DOWN_EVENT_NAMES as readonly string[]).includes(event)) {
+        throw new Error(
+            `[@hashrace/partner-browser] unknown downstream event: ${event} — only ${DOWN_EVENT_NAMES.join(' / ')} may be sent.`,
+        );
+    }
+}
+
 // ============================================================================
 // 禁止事件清单
 // ============================================================================
@@ -142,15 +217,16 @@ export type DownEventName = keyof DownEventMap;
 /**
  * Partner 父页面绝对不允许向 iframe 发送的事件名。
  *
- * Seamless Wallet 架构下 HashMach 永不持有玩家资金、永不信任父页面的资金或会话指令：
+ * Seamless Wallet 架构下 Hashrace 永不持有玩家资金、永不信任父页面的资金或会话指令：
  *   - Financial：余额、押金、出款等资金动作必须走 Seamless Webhook S2S 通道，
  *               不允许通过浏览器端 postMessage 冒充
- *   - Session：登出、Token 刷新、强制下线等动作必须由 HashMach 后端决定，
+ *   - Session：登出、Token 刷新、强制下线等动作必须由 Hashrace 后端决定，
  *               父页面无权越过后端通知 iframe "你该登出了"
- *   - Game control：强制弃牌、离桌、坐下等游戏控制必须由 HashMach Game 引擎
+ *   - Game control：强制弃牌、离桌、坐下等游戏控制必须由 Hashrace 游戏引擎
  *                    基于规则触发，父页面无权强制玩家出牌
  *
- * SDK `send()` 在运行时检测此清单并抛错，避免 Partner 侧误用。
+ * 这些名字本来就不在 DownEventMap 白名单里，`send()` 无论如何都会拒发；单列出来是为了
+ * 给出「这类指令只能走服务端」的明确报错，而不是笼统的「未知事件」。
  */
 export const FORBIDDEN_DOWN_EVENTS: readonly string[] = [
     // 资金类

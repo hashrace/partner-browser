@@ -1,48 +1,53 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
+import { JSDOM, VirtualConsole } from 'jsdom';
 import { DEFAULT_IFRAME_ALLOW, launchInPopup } from '../popup';
 
 /**
- * jsdom 对 window.open + document.write + 跨 window postMessage 实现不完整，
- * 这里通过 stub window.open 返回受控的 fake popup 对象做单测——验证
- * launchInPopup 在父页一侧的逻辑（URL 校验、popup blocker 处理、
- * 监听器 + 轮询装配、handle API、FORBIDDEN_DOWN_EVENTS 拦截、关闭轮询等）。
+ * window.open 被 stub 成受控的 fake popup：窗口层（closed / postMessage / close / focus）是 mock，
+ * 但 `document` 是一份开了 runScripts 的真实 jsdom 文档——wrapper 的 DOM 装配与 relay 脚本
+ * 会被真正解析、执行，回归用例据此检查实际生成的 DOM，而不是对 HTML 字符串做 toContain。
  *
- * wrapper script 内部的 relay 转发逻辑不在 jsdom 单测覆盖范围，留给真机
- * Chrome 联调（PLAN-134a Task 11）。
+ * relay 脚本跨窗口转发（iframe ↔ opener）依赖真实的多窗口 postMessage，jsdom 覆盖不了，
+ * 留给真机浏览器联调。
  */
-
-interface FakeDocument {
-    open: Mock;
-    write: Mock;
-    close: Mock;
-}
 
 interface FakePopup {
     closed: boolean;
     postMessage: Mock;
     close: Mock;
     focus: Mock;
-    document: FakeDocument;
+    document: Document;
+    dom: JSDOM;
+    /** wrapper 文档内脚本执行抛出的错误（语法错 / 运行时错都会落到这里） */
+    scriptErrors: unknown[];
 }
 
 function makeFakePopup(): FakePopup {
+    const scriptErrors: unknown[] = [];
+    const virtualConsole = new VirtualConsole();
+    virtualConsole.on('jsdomError', (err) => scriptErrors.push(err));
+    const dom = new JSDOM('', { runScripts: 'dangerously', url: 'about:blank', virtualConsole });
     const popup: FakePopup = {
         closed: false,
         postMessage: vi.fn(),
         close: vi.fn(),
         focus: vi.fn(),
-        document: {
-            open: vi.fn(),
-            write: vi.fn(),
-            close: vi.fn(),
-        },
+        document: dom.window.document,
+        dom,
+        scriptErrors,
     };
     // close() 副作用：把 closed 翻成 true
     popup.close.mockImplementation(() => {
         popup.closed = true;
     });
     return popup;
+}
+
+function wrapperIframe(popup: FakePopup): HTMLIFrameElement {
+    const frames = popup.document.querySelectorAll('iframe');
+    expect(frames).toHaveLength(1);
+    return frames[0] as HTMLIFrameElement;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,6 +64,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    lastPopup?.dom.window.close();
     openSpy.mockRestore();
     vi.useRealTimers();
 });
@@ -97,27 +103,20 @@ describe('launchInPopup', () => {
         expect(onBlocked).toHaveBeenCalledTimes(1);
     });
 
-    it('writes wrapper HTML containing iframe with launch URL and default allow attribute', () => {
+    it('mounts exactly one iframe with launch URL and default allow attribute', () => {
         launchInPopup({ launchUrl: 'https://app.hashrace.com/?launch=tok' });
-        const popup = lastPopup!;
-        expect(popup.document.write).toHaveBeenCalledOnce();
-        const html = popup.document.write.mock.calls[0]![0] as string;
-        expect(html).toContain('<iframe');
-        expect(html).toContain('https://app.hashrace.com/?launch=tok');
-        expect(html).toContain('web-share *');
-        expect(html).toContain('clipboard-write *');
-        expect(html).toContain('screen-wake-lock *');
-        expect(html).toContain('fullscreen *');
+        const iframe = wrapperIframe(lastPopup!);
+        expect(iframe.getAttribute('src')).toBe('https://app.hashrace.com/?launch=tok');
+        expect(iframe.getAttribute('allow')).toBe(DEFAULT_IFRAME_ALLOW);
+        expect(lastPopup!.document.title).toBe('Hashrace');
     });
 
-    it('iframeAllow custom value appears in wrapper HTML', () => {
+    it('iframeAllow custom value is set verbatim on the iframe', () => {
         launchInPopup({
             launchUrl: 'https://app.hashrace.com/?launch=t',
             iframeAllow: 'camera *',
         });
-        const html = lastPopup!.document.write.mock.calls[0]![0] as string;
-        expect(html).toContain('camera *');
-        expect(html).not.toContain(DEFAULT_IFRAME_ALLOW);
+        expect(wrapperIframe(lastPopup!).getAttribute('allow')).toBe('camera *');
     });
 
     it('iframeAllow === "" omits allow attribute on iframe element', () => {
@@ -125,8 +124,47 @@ describe('launchInPopup', () => {
             launchUrl: 'https://app.hashrace.com/?launch=t',
             iframeAllow: '',
         });
-        const html = lastPopup!.document.write.mock.calls[0]![0] as string;
-        expect(html).not.toContain(' allow=');
+        expect(wrapperIframe(lastPopup!).hasAttribute('allow')).toBe(false);
+    });
+
+    // 守的回归：launchUrl / iframeAllow 曾被 JSON.stringify 后拼进 HTML 属性，
+    // 带 `"` 的值逃出属性注入 onload，脚本在继承 opener origin 的 popup 里执行（Partner 域 XSS）。
+    // 这里真正执行 wrapper 生成的文档，检查的是 DOM 结果而不是字符串。
+    function expectNoInjection(popup: FakePopup): HTMLIFrameElement {
+        const doc = popup.document;
+        const iframe = wrapperIframe(popup);
+        expect(iframe.onload).toBeNull();
+        // 整份文档里不允许出现任何事件处理器属性
+        for (const el of Array.from(doc.querySelectorAll('*'))) {
+            expect(el.getAttributeNames().filter((n) => n.startsWith('on'))).toEqual([]);
+        }
+        iframe.dispatchEvent(new popup.dom.window.Event('load'));
+        expect(doc.body.dataset.pwned).toBeUndefined();
+        // relay 脚本仍然装上且执行无错（没有被骨架 / 注入破坏）
+        expect(doc.querySelectorAll('script')).toHaveLength(1);
+        expect(popup.scriptErrors).toEqual([]);
+        return iframe;
+    }
+
+    it('launchUrl cannot break out of the iframe src attribute (XSS regression)', () => {
+        const evilUrl =
+            'https://127.0.0.1:9/game?launch=x"/onload=document.body.dataset.pwned=document.domain//';
+        expect(launchInPopup({ launchUrl: evilUrl })).not.toBeNull();
+        const iframe = expectNoInjection(lastPopup!);
+        expect(iframe.getAttributeNames().sort()).toEqual(['allow', 'src', 'style']);
+        expect(iframe.getAttribute('src')).toBe(new URL(evilUrl).href);
+        expect(iframe.getAttribute('allow')).toBe(DEFAULT_IFRAME_ALLOW);
+    });
+
+    it('iframeAllow cannot break out of the iframe allow attribute (XSS regression)', () => {
+        const evilAllow = 'fullscreen *" onload="document.body.dataset.pwned=1" x="';
+        expect(launchInPopup({
+            launchUrl: 'https://app.hashrace.com/?launch=x',
+            iframeAllow: evilAllow,
+        })).not.toBeNull();
+        const iframe = expectNoInjection(lastPopup!);
+        expect(iframe.getAttributeNames().sort()).toEqual(['allow', 'src', 'style']);
+        expect(iframe.getAttribute('allow')).toBe(evilAllow);
     });
 
     it('exposes PopupHandle API surface (on / off / send / close / focus / onClosed / dispose / closed)', () => {
@@ -147,6 +185,18 @@ describe('launchInPopup', () => {
         const send = handle.send as unknown as (e: string, p: any) => void;
         expect(() => send('logout', {})).toThrow(/forbidden/);
         expect(() => send('set_balance', {})).toThrow(/forbidden/);
+    });
+
+    it('rejects downstream events outside DownEventMap', () => {
+        const handle = launchInPopup({ launchUrl: 'https://app.hashrace.com/?launch=x' })!;
+        const send = handle.send as unknown as (e: string, p: unknown) => void;
+        expect(() => send('parent.balance_refreshed', {})).toThrow(/unknown downstream event/);
+        expect(lastPopup!.postMessage).not.toHaveBeenCalled();
+    });
+
+    it('relay script executes without errors for a normal launch', () => {
+        launchInPopup({ launchUrl: 'https://app.hashrace.com/?launch=x' });
+        expect(lastPopup!.scriptErrors).toEqual([]);
     });
 
     it('allows sending whitelisted downstream events via popup.postMessage', () => {
@@ -299,9 +349,9 @@ describe('launchInPopup', () => {
     it('passes name to window.open second arg', () => {
         launchInPopup({
             launchUrl: 'https://app.hashrace.com/?launch=x',
-            name: 'hashmach-game',
+            name: 'hashrace-game',
         });
-        expect(openSpy.mock.calls[0][1]).toBe('hashmach-game');
+        expect(openSpy.mock.calls[0][1]).toBe('hashrace-game');
     });
 
     it('DEFAULT_IFRAME_ALLOW exposes four B2B baseline permissions', () => {

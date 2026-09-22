@@ -6,8 +6,8 @@ import { DEFAULT_IFRAME_ALLOW } from './popup';
  */
 export interface EmbedOptions {
     /**
-     * HashMach 后端返回的一次性启动 URL，形如 https://app.hashrace.com/lobby?launch=lt_xxx。
-     * 必须是 HTTPS。Partner 后端应用自己的 API Key 调 HashMach 的 /api/v1/partner/launch-session
+     * Hashrace 后端返回的一次性启动 URL，形如 https://app.hashrace.com/lobby?launch=lt_xxx。
+     * 必须是 HTTPS。Partner 后端用自己的 API Key 调 Hashrace 的 /api/v1/partner/launch-session
      * 获取该 URL，然后把 URL 下发到前端（不要把 API Key 下发到前端）。
      */
     launchUrl: string;
@@ -24,7 +24,7 @@ export interface EmbedOptions {
     expectedChildOrigin?: string | readonly string[];
     /** 安全违规回调，透传给底层 PartnerClient。 */
     onSecurityViolation?: (reason: string, detail: unknown) => void;
-    /** iframe 的 title 属性（a11y 要求），默认 "HashMach Game"。 */
+    /** iframe 的 title 属性（a11y 要求），默认 "Hashrace Game"。读屏软件会把它读给玩家听。 */
     title?: string;
     /**
      * iframe `allow` 属性值。默认 DEFAULT_IFRAME_ALLOW（与 PG Soft / Pragmatic Play
@@ -45,7 +45,7 @@ export interface EmbedResult {
 }
 
 /**
- * 一站式创建 HashMach iframe 并返回配对 PartnerClient。
+ * 一站式创建 Hashrace iframe 并返回配对 PartnerClient。
  *
  * 默认配置：
  *   - HTTPS only：launchUrl 必须是 https，否则抛错
@@ -67,7 +67,7 @@ export function embedHashraceIframe(opts: EmbedOptions): EmbedResult {
     iframe.width = opts.width ?? '100%';
     iframe.height = opts.height ?? '100%';
     iframe.style.border = '0';
-    iframe.title = opts.title ?? 'HashMach Game';
+    iframe.title = opts.title ?? 'Hashrace Game';
     const allow = opts.iframeAllow ?? DEFAULT_IFRAME_ALLOW;
     if (allow) {
         iframe.setAttribute('allow', allow);

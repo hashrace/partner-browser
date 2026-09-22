@@ -5,7 +5,7 @@ import {
     DownEventName,
     UpEventMap,
     UpEventName,
-    FORBIDDEN_DOWN_EVENTS,
+    assertSendableDownEvent,
 } from './events';
 import { isExpectedOrigin, DEFAULT_CHILD_ORIGIN } from './origin';
 
@@ -52,7 +52,10 @@ export interface PartnerClient {
     on<E extends UpEventName>(event: E, handler: UpHandler<E>): void;
     /** 取消订阅。 */
     off<E extends UpEventName>(event: E): void;
-    /** 向 iframe 发送下行事件。event 必须在 DownEventMap 白名单内；发送禁止事件直接抛错。 */
+    /**
+     * 向 iframe 发送下行事件。event 不在 DownEventMap 白名单内（含禁止事件）直接抛错。
+     * iframe 侧当前不消费任何下行事件，发出去不会有效果。
+     */
     send<E extends DownEventName>(event: E, payload: DownEventMap[E]): void;
     /** 解除 window message 监听并清空所有订阅。必须在 iframe 销毁前调用以避免内存泄漏。 */
     dispose(): void;
@@ -67,7 +70,7 @@ export interface PartnerClient {
  *   3. `data.channel === 'hashrace.v1'`——与其他库的 postMessage 互不干扰
  *
  * 发送路径：
- *   - 拦截禁止事件（资金/会话/游戏控制类）抛错
+ *   - 不在 DownEventMap 白名单内的事件抛错（禁止事件给出专门的报错）
  *   - postMessage targetOrigin 严格使用 expected（数组取首元素），不使用 "*"
  */
 export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
@@ -136,11 +139,7 @@ export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
             handlers.delete(event);
         },
         send(event, payload) {
-            if (FORBIDDEN_DOWN_EVENTS.includes(event as string)) {
-                throw new Error(
-                    `[@hashrace/partner-browser] forbidden event: ${String(event)} — this event must not be sent from Partner page; route through Seamless Wallet / server-side channel instead.`,
-                );
-            }
+            assertSendableDownEvent(String(event));
             opts.iframe.contentWindow?.postMessage(
                 {
                     channel: CHANNEL,
