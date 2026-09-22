@@ -3,12 +3,36 @@
 All notable changes to `@hashrace/partner-browser` are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## Unreleased
+
+### Security
+
+- `launchInPopup`: fixed an XSS in the popup wrapper. `launchUrl` and `iframeAllow`
+  were embedded into HTML attributes as JSON strings, so a value containing `"`
+  could break out of the attribute and inject an event handler that ran in the
+  popup (same origin as the Partner page). The wrapper is now a static skeleton;
+  the iframe is created with DOM APIs (`iframe.src` / `setAttribute`).
+
+### Added
+
+- Upstream events `iframe.retry_request`, `iframe.support_request` and
+  `iframe.game_ended` (`{ game_id }`), which the game client emits.
+
+### Changed
+
+- `send()` (both `PartnerClient` and `PopupHandle`) now rejects any event that is
+  not a `DownEventMap` key. Previously only `FORBIDDEN_DOWN_EVENTS` was checked.
+- The popup relay only forwards known upstream / downstream event names.
+- Default iframe `title` is now `"Hashrace Game"`; popup window title is `"Hashrace"`.
+- README marks which upstream events the game client does not emit yet, and that
+  the iframe does not consume downstream events yet.
+
 ## 0.2.0
 
 ### Added
 
 - `launchInPopup(options)` helper for popup-window game launch (PG SOFT-style).
-  Opens an HashMach-controlled `about:blank` wrapper window, injects a relay
+  Opens a Hashrace-controlled `about:blank` wrapper window, injects a relay
   iframe + script, and exposes a `PopupHandle` whose `on/off/send` surface
   matches `PartnerClient`. Handles popup blockers, cross-window relaying of
   `hashrace.v1` envelopes, and `onClosed` lifecycle.

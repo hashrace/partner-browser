@@ -1,9 +1,9 @@
 # @hashrace/partner-browser
 
-Official browser-side postMessage SDK for embedding HashMach games in Partner websites.
+Official browser-side postMessage SDK for embedding Hashrace games in Partner websites.
 
 Implements the `hashrace.v1` channel: the contract between a Partner-owned parent
-page and an embedded HashMach iframe. The protocol itself is defined in
+page and an embedded Hashrace iframe. The protocol itself is defined in
 [hashmach-docs `architecture/iframe-postmessage.md`](https://github.com/hashrace/hashmach-docs/blob/main/architecture/iframe-postmessage.md) —
 the SDK is the reference implementation for the parent side.
 
@@ -51,12 +51,16 @@ client.on('iframe.exit_request', (_, ack) => {
 });
 ```
 
+> **Note:** `iframe.round_end` (and `iframe.round_start` / `iframe.size_change` /
+> `iframe.error`) are defined in the protocol but **not yet emitted** by the game
+> client. See the [Events](#events) table for what is currently sent.
+
 ### Manual (you already have the iframe element)
 
 ```ts
 import { createPartnerClient } from '@hashrace/partner-browser';
 
-const iframe = document.querySelector('iframe#hashmach')!;
+const iframe = document.querySelector('iframe#hashrace-game')!;
 const client = createPartnerClient({
     iframe,
     expectedChildOrigin: 'https://app.hashrace.com',
@@ -93,7 +97,7 @@ document.getElementById('play')!.addEventListener('click', () => {
 - `launchUrl` 必须 `https://`（dev 例外允许 `http://localhost`）
 - 句柄 API 与 `PartnerClient` 对齐（`on` / `off` / `send` / `dispose`），另含 `close` / `focus` / `onClosed` / `closed` flag
 
-**机制简介：** `launchInPopup` 在 popup 内通过 `about:blank` + `document.write` 注入一个 wrapper page，wrapper 内嵌真正的 HashMach iframe 并把上行 `hashrace.v1` 信封透明转发回 opener。Cocos 客户端零改动。
+**机制简介：** `launchInPopup` 打开 `about:blank` popup，写入一个不含任何调用方数据的静态 wrapper 骨架，再用 DOM API 创建真正的 Hashrace iframe（`launchUrl` / `iframeAllow` 经 `iframe.src` / `setAttribute` 设置，不经 HTML 解析），并插入 relay 脚本把上行 `hashrace.v1` 信封转发回 opener。游戏客户端零改动。
 
 ### iframe `allow` 属性（必备）
 
@@ -136,10 +140,11 @@ but the responsibility is still yours to keep:
 1. **Origin verification** — enforced by default. Do not pass `"*"`. If your product
    has both prod and staging, pass an array: `['https://app.hashrace.com', 'https://app-staging.hashrace.com']`.
 2. **Never send financial, session, or game-control events from the parent page.**
-   The SDK rejects a documented list at runtime (`FORBIDDEN_DOWN_EVENTS`): anything
-   like `deposit_done`, `logout`, `force_bet`, `revoke_session`, etc. Financial
-   state flows through Seamless Wallet S2S only; the parent page is not authorized
-   to mutate game or session state.
+   `send()` only accepts the downstream events listed below and throws on anything
+   else. Names such as `deposit_done`, `logout`, `force_bet`, `revoke_session`
+   (`FORBIDDEN_DOWN_EVENTS`) get a dedicated error explaining why. Financial state
+   flows through Seamless Wallet S2S only; the parent page is not authorized to
+   mutate game or session state.
 3. **HTTPS only** — `embedHashraceIframe` / `launchInPopup` throw on non-https `launchUrl`
    (dev exception: `http://localhost`).
 4. **Respond to `iframe.exit_request` within 5 seconds** — the iframe falls back
@@ -153,27 +158,33 @@ but the responsibility is still yours to keep:
 
 ### Upstream (iframe → parent)
 
-| Event | Payload | Needs ack? |
-|-------|---------|------------|
-| `iframe.ready` | `{ client_version, protocol_version }` | no |
-| `iframe.size_change` | `{ width, height }` | no |
-| `iframe.exit_request` | `{ reason }` | **yes** (5 s) |
-| `iframe.round_start` | `{ round_id, game_code, started_at }` | no |
-| `iframe.round_end` | `{ round_id, game_code, net_change_minor, currency, ended_at }` | no |
-| `iframe.error` | `{ code, trace_id?, message }` | no |
+| Event | Payload | Needs ack? | Emitted by the game client today? |
+|-------|---------|------------|-----------------------------------|
+| `iframe.ready` | `{ client_version, protocol_version }` | no | yes |
+| `iframe.exit_request` | `{ reason }` | **yes** (5 s) | yes |
+| `iframe.game_ended` | `{ game_id }` — player left the game ("Back to {brand}" or normal exit) | no | yes |
+| `iframe.retry_request` | `{}` — player tapped "Retry" on the maintenance screen; issue a fresh launch URL and re-mount the iframe (launch tokens are single-use) | no | yes |
+| `iframe.support_request` | `{}` — player tapped "Contact support"; open your support channel | no | yes |
+| `iframe.size_change` | `{ width, height }` | no | **not yet** |
+| `iframe.round_start` | `{ round_id, game_code, started_at }` | no | **not yet** |
+| `iframe.round_end` | `{ round_id, game_code, net_change_minor, currency, ended_at }` | no | **not yet** |
+| `iframe.error` | `{ code, trace_id?, message }` | no | **not yet** |
 
 ### Downstream (parent → iframe, allowlisted)
 
-| Event | Payload |
-|-------|---------|
-| `parent.resize` | `{ width, height }` |
-| `parent.close_request` | `{ reason }` |
-| `parent.visibility_change` | `{ visible }` |
-| `parent.pause` | `{}` |
-| `parent.resume` | `{}` |
+> **The iframe does not consume any downstream event yet.** `send()` delivers the
+> message, but the game currently ignores it. The names are reserved by the protocol.
 
-Anything not in the downstream table that looks financial / session / game-control
-is in `FORBIDDEN_DOWN_EVENTS` and throws at runtime.
+| Event | Payload | Consumed by the iframe today? |
+|-------|---------|-------------------------------|
+| `parent.resize` | `{ width, height }` | **not yet** |
+| `parent.close_request` | `{ reason }` | **not yet** |
+| `parent.visibility_change` | `{ visible }` | **not yet** |
+| `parent.pause` | `{}` | **not yet** |
+| `parent.resume` | `{}` | **not yet** |
+
+`send()` throws on any event not in this table. Financial / session / game-control
+names (`FORBIDDEN_DOWN_EVENTS`) get a dedicated error message.
 
 ## Version Policy
 
@@ -190,8 +201,8 @@ stability or use `^0.2.0` to receive patch updates only.
 - Node 18+ for the build / publish toolchain (uses `crypto.randomUUID`).
 - All evergreen browsers. Safari 14+, Chrome 92+, Firefox 95+, Edge 92+.
 - For older browsers, polyfill `crypto.randomUUID` before loading the SDK.
-- Popup mode (`launchInPopup`) uses `window.open` + `about:blank` + `document.write`;
-  popup is same-origin as opener (about:blank inherits opener origin) so relay
+- Popup mode (`launchInPopup`) uses `window.open` + `about:blank`; the wrapper
+  is assembled with DOM APIs. The popup is same-origin as opener (about:blank inherits opener origin) so relay
   messaging uses strict origin checks against `window.location.origin` on both
   sides.
 
@@ -199,7 +210,8 @@ stability or use `^0.2.0` to receive patch updates only.
 
 See `examples/vanilla`, `examples/react`, `examples/vue` in this repo. Each
 directory contains both an iframe demo (`index.html` / `App.tsx` / `App.vue`)
-and a popup demo (`popup.html` / `PopupApp.tsx` / `PopupApp.vue`).
+and a popup demo (`popup.html` / `PopupApp.tsx` / `PopupApp.vue`). See
+[`examples/README.md`](./examples/README.md) for how to run them.
 
 ## License
 
