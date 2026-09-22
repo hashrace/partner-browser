@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { launchInPopup, type PopupHandle } from '@hashrace/partner-browser';
 
 /**
- * React 版 HashMach popup 启动器。
+ * React 版 Hashrace popup 启动器。
  *
  * 关键约束：launchInPopup 必须在 user gesture 同步路径（onClick 内）调用，
  * 否则浏览器会拦截 popup。useEffect 内调用会被 popup blocker 抓住。
@@ -39,7 +39,7 @@ export function PopupApp({ launchUrl }: { launchUrl: string }) {
 
     return (
         <div style={{ font: '14px system-ui', padding: 24, maxWidth: 600 }}>
-            <h1>HashMach 游戏（popup 模式）</h1>
+            <h1>Hashrace 游戏（popup 模式）</h1>
             <button onClick={onClick} disabled={active} style={{ padding: '10px 20px', fontSize: 16 }}>
                 {active ? '游戏运行中…' : '运行游戏'}
             </button>

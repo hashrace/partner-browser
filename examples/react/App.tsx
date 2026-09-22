@@ -6,8 +6,8 @@ import { useEffect, useRef } from 'react';
 import { embedHashraceIframe, type PartnerClient } from '@hashrace/partner-browser';
 
 /**
- * React 版 HashMach iframe 容器。
- * launchUrl 由 Partner 后端调用 HashMach /api/v1/partner/launch-session 获取后下发到前端。
+ * React 版 Hashrace iframe 容器。
+ * launchUrl 由 Partner 后端调用 Hashrace /api/v1/partner/launch-session 获取后下发到前端。
  */
 export function App({ launchUrl }: { launchUrl: string }) {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -15,7 +15,7 @@ export function App({ launchUrl }: { launchUrl: string }) {
 
     useEffect(() => {
         if (!containerRef.current) return;
-        const { client } = embedHashraceIframe({
+        const { iframe, client } = embedHashraceIframe({
             launchUrl,
             container: containerRef.current,
             onSecurityViolation: (reason, detail) => {
@@ -35,7 +35,11 @@ export function App({ launchUrl }: { launchUrl: string }) {
 
         clientRef.current = client;
         return () => {
+            // 必须连 iframe 一起移除，只 dispose() 不够：StrictMode 开发期会挂载两次，
+            // 留在 DOM 里的旧 iframe 与新 iframe 会拿同一个一次性 launch token 去兑换，
+            // 后到的那个必然失败；launchUrl 变化时旧 iframe 也会一直残留在容器里。
             client.dispose();
+            iframe.remove();
             clientRef.current = null;
         };
     }, [launchUrl]);

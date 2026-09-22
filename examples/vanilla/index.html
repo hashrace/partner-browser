@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>HashMach iframe demo (vanilla)</title>
+    <title>Hashrace iframe demo (vanilla)</title>
     <style>
         html, body, #game { margin: 0; height: 100%; }
         #log { position: fixed; bottom: 0; left: 0; right: 0; max-height: 30%; overflow: auto; background: #111; color: #0f0; font: 12px monospace; padding: 4px; }
@@ -17,9 +17,9 @@
         // 四项浏览器权限（对齐 PG Soft / Pragmatic Play B2B 基线）。若需 opt-out
         // 传 iframeAllow: ''；自定义覆盖传 iframeAllow: '<your-string>'。
         //
-        // 本地开发把下面一行换成 `from './path/to/@hashrace/partner-browser/dist/index.mjs'`
-        // 或经由你的打包器 `import { embedHashraceIframe } from '@hashrace/partner-browser'`
-        import { embedHashraceIframe } from 'https://unpkg.com/@hashrace/partner-browser';
+        // 引用本仓的本地构建产物（先在仓库根目录 `npm ci && npm run build`，见 examples/README.md）。
+        // 真实项目里经由打包器 `import { embedHashraceIframe } from '@hashrace/partner-browser'`。
+        import { embedHashraceIframe } from '../../dist/index.mjs';
 
         const log = (msg) => {
             const el = document.getElementById('log');
@@ -27,26 +27,40 @@
             el.scrollTop = el.scrollHeight;
         };
 
-        // 真实场景：launchUrl 来自 Partner 后端调用 HashMach 的 /api/v1/partner/launch-session
-        // 返回的响应。Partner 后端持有 API Key，不要把 API Key 下发到浏览器。
-        const launchUrl = new URLSearchParams(window.location.search).get('launchUrl');
-        if (!launchUrl) {
-            document.getElementById('game').innerText = 'missing ?launchUrl=...';
-        } else {
+        // launchUrl 必须由你自己的后端签发：后端持 API Key 调 Hashrace 的
+        // /api/v1/partner/launch-session，再把返回的 URL 交给已登录的玩家页面。
+        // 不要从页面 query / hash 里读 launchUrl——那等于让任意链接决定 iframe 加载什么（反射型 XSS / 钓鱼）。
+        // `/api/hashrace/launch` 是示意路径，换成你后端的实际接口。
+        async function fetchLaunchUrl() {
+            const res = await fetch('/api/hashrace/launch', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ game_code: 'mines' }),
+            });
+            if (!res.ok) throw new Error('launch-session failed: HTTP ' + res.status);
+            const { launch_url } = await res.json();
+            return launch_url;
+        }
+
+        try {
+            const launchUrl = await fetchLaunchUrl();
             const { client } = embedHashraceIframe({
-                launchUrl: decodeURIComponent(launchUrl),
+                launchUrl,
                 container: document.getElementById('game'),
                 onSecurityViolation: (reason, detail) => log('[violation] ' + reason + ' ' + JSON.stringify(detail)),
             });
             client.on('iframe.ready', (p) => log('iframe ready: ' + JSON.stringify(p)));
-            client.on('iframe.round_start', (p) => log('round start: ' + p.round_id));
-            client.on('iframe.round_end', (p) => log('round end: net=' + p.net_change_minor + ' ' + p.currency));
-            client.on('iframe.error', (p) => log('iframe error: ' + p.code + ' ' + p.message));
+            client.on('iframe.game_ended', (p) => log('game ended: ' + p.game_id));
+            client.on('iframe.retry_request', () => log('retry requested: fetch a new launch URL and re-mount'));
+            client.on('iframe.support_request', () => log('support requested: open your support channel'));
             client.on('iframe.exit_request', (p, ack) => {
                 log('iframe wants to exit: ' + p.reason);
                 ack({ accepted: true });
                 // 然后 Partner 页面自行关闭 iframe / 跳转大厅
             });
+        } catch (err) {
+            document.getElementById('game').textContent = String(err);
         }
     </script>
 </body>

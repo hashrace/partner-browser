@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>HashMach popup demo (vanilla)</title>
+    <title>Hashrace popup demo (vanilla)</title>
     <style>
         body { font: 14px system-ui; padding: 24px; max-width: 600px; }
         button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
@@ -12,17 +12,18 @@
     </style>
 </head>
 <body>
-    <h1>HashMach 游戏（popup 模式）</h1>
+    <h1>Hashrace 游戏（popup 模式）</h1>
     <p>点击下方按钮在新窗口启动游戏。与 iframe 嵌入相比，popup 模式让游戏独占
        一个浏览器窗口，不占用 Partner 父页空间——形态对齐 PG SOFT 等行业 popup 启动器。</p>
-    <button id="play">运行游戏</button>
+    <button id="play" disabled>准备中…</button>
     <div id="status">未启动</div>
     <pre id="log"></pre>
     <script type="module">
-        // 本地开发把下面一行换成 `from './path/to/@hashrace/partner-browser/dist/index.mjs'`
-        // 或经由你的打包器 `import { launchInPopup } from '@hashrace/partner-browser'`
-        import { launchInPopup } from 'https://unpkg.com/@hashrace/partner-browser';
+        // 引用本仓的本地构建产物（先在仓库根目录 `npm ci && npm run build`，见 examples/README.md）。
+        // 真实项目里经由打包器 `import { launchInPopup } from '@hashrace/partner-browser'`。
+        import { launchInPopup } from '../../dist/index.mjs';
 
+        const play = document.getElementById('play');
         const status = (msg) => { document.getElementById('status').textContent = msg; };
         const log = (msg) => {
             const el = document.getElementById('log');
@@ -30,23 +31,48 @@
             el.scrollTop = el.scrollHeight;
         };
 
-        // 真实场景：launchUrl 由 Partner 后端调用 HashMach /api/v1/partner/launch-session
-        // 获取，不要把 API Key 下发到浏览器。本 demo 直接从 URL query 拿。
-        const launchUrl = decodeURIComponent(
-            new URLSearchParams(window.location.search).get('launchUrl') || ''
-        );
+        // launchUrl 必须由你自己的后端签发：后端持 API Key 调 Hashrace 的
+        // /api/v1/partner/launch-session，再把返回的 URL 交给已登录的玩家页面。
+        // 不要从页面 query / hash 里读 launchUrl——那等于让任意链接决定弹窗加载什么（反射型 XSS / 钓鱼）。
+        // `/api/hashrace/launch` 是示意路径，换成你后端的实际接口。
+        async function fetchLaunchUrl() {
+            const res = await fetch('/api/hashrace/launch', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ game_code: 'mines' }),
+            });
+            if (!res.ok) throw new Error('launch-session failed: HTTP ' + res.status);
+            const { launch_url } = await res.json();
+            return launch_url;
+        }
 
-        document.getElementById('play').addEventListener('click', () => {
-            if (!launchUrl) {
-                status('缺少 ?launchUrl=... query 参数');
-                return;
+        // launchInPopup 必须在点击的同步路径里调用（否则被浏览器拦截弹窗），
+        // 所以 launch URL 要在点击之前取好；它是一次性的，用掉一次就重新取下一枚。
+        let launchUrl = null;
+        async function prepare() {
+            play.disabled = true;
+            play.textContent = '准备中…';
+            try {
+                launchUrl = await fetchLaunchUrl();
+                play.disabled = false;
+                play.textContent = '运行游戏';
+            } catch (err) {
+                status(String(err));
             }
+        }
+
+        play.addEventListener('click', () => {
+            if (!launchUrl) return;
+            const url = launchUrl;
+            launchUrl = null;
 
             const handle = launchInPopup({
-                launchUrl,
+                launchUrl: url,
                 window: { width: 1280, height: 720 },
                 onPopupBlocked: () => {
                     status('弹窗被浏览器拦截，请在浏览器设置中允许本站弹窗后重试');
+                    void prepare();
                 },
                 onSecurityViolation: (reason, detail) => {
                     log('[violation] ' + reason + ' ' + JSON.stringify(detail));
@@ -54,16 +80,16 @@
             });
             if (!handle) return;
 
+            play.disabled = true;
             status('游戏窗口已启动');
             log('popup opened');
 
             handle.on('iframe.ready', (p) => log('iframe ready: ' + JSON.stringify(p)));
-            handle.on('iframe.round_start', (p) => log('round start: ' + p.round_id));
-            handle.on('iframe.round_end', (p) => {
-                log('round end: net=' + p.net_change_minor + ' ' + p.currency);
-                // 此处可触发 Partner 自家钱包余额刷新 UI
+            handle.on('iframe.game_ended', (p) => {
+                log('game ended: ' + p.game_id);
+                handle.close();
             });
-            handle.on('iframe.error', (p) => log('iframe error: ' + p.code + ' ' + p.message));
+            handle.on('iframe.support_request', () => log('support requested: open your support channel'));
             handle.on('iframe.exit_request', (p, ack) => {
                 log('iframe wants to exit: ' + p.reason);
                 ack({ accepted: true });
@@ -73,8 +99,11 @@
                 status('游戏窗口已关闭');
                 log('popup closed');
                 // 此处可触发回到 Partner 大厅 / 刷新余额
+                void prepare();
             });
         });
+
+        void prepare();
     </script>
 </body>
 </html>

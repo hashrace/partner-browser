@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { launchInPopup, type PopupHandle } from '@hashrace/partner-browser';
 
 /**
- * Vue 3 版 HashMach popup 启动器。
+ * Vue 3 版 Hashrace popup 启动器。
  *
  * 关键约束：launchInPopup 必须在 user gesture 同步路径（@click 内）调用，
  * 否则浏览器会拦截 popup。onMounted 内调用会被 popup blocker 抓住。
@@ -39,7 +39,7 @@ function onClick(launchUrl: string): void {
 
 <template>
     <div style="font: 14px system-ui; padding: 24px; max-width: 600px">
-        <h1>HashMach 游戏（popup 模式）</h1>
+        <h1>Hashrace 游戏（popup 模式）</h1>
         <button
             :disabled="active"
             style="padding: 10px 20px; font-size: 16px"
