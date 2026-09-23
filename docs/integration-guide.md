@@ -267,6 +267,7 @@ const { client } = embedHashraceIframe({
 
 `iframe.round_end` 字段：
 
+<!-- parity:pm-fields:iframe.round_end -->
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `round_id` | string | 与 `iframe.round_start` 对应 |
