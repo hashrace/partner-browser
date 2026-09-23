@@ -57,8 +57,12 @@ jobs:
       - name: lint
         run: npm run lint
 
+      # 客户端仓是私有仓、本 job 不 checkout 它：SDK ↔ 客户端发送点的对账在这里显式跳过，
+      # 发版前须在有客户端仓的本地跑过一遍 npm test（默认读 hashmach-client@develop）。
       - name: test
         run: npm test
+        env:
+          HASHRACE_SKIP_CLIENT_CONTRACT: '1'
 
       - name: Bundle size guard
         run: |

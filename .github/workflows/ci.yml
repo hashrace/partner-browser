@@ -17,7 +17,11 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      # 客户端仓（hashmach-client）是私有仓、本 job 不 checkout 它，SDK ↔ 客户端发送点的对账
+      # 在这里显式跳过；它在本地（兄弟目录有客户端仓）默认执行，找不到仓时硬失败。
       - run: npm test
+        env:
+          HASHRACE_SKIP_CLIENT_CONTRACT: '1'
       - run: npm run build
       - name: Bundle size guard
         run: |
