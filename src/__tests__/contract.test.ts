@@ -46,6 +46,14 @@ const SDK_PAYLOAD_FIELDS: { [E in UpEventName]: readonly string[] } = {
 // @ts-expect-error 漏列 game_code 必须编译失败
 keysOf<UpEventMap['iframe.round_start']>()('round_id', 'started_at');
 
+// 退出原因只有客户端真实会发的两种。曾经多列了一个从不发送的 'error'，Partner 照着写的
+// 分支永远走不到；它若被加回来，这里编译失败。
+const exitReasons: readonly UpEventMap['iframe.exit_request']['reason'][] = ['user_back', 'session_expired'];
+void exitReasons;
+// @ts-expect-error 'error' 不是合法的退出原因
+const staleExitReason: UpEventMap['iframe.exit_request']['reason'] = 'error';
+void staleExitReason;
+
 const sorted = (xs: readonly string[]): string[] => [...xs].sort();
 
 describe('上行事件契约：SDK ↔ 客户端清单', () => {

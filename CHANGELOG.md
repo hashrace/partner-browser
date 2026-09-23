@@ -23,6 +23,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `send()` (both `PartnerClient` and `PopupHandle`) now rejects any event that is
   not a `DownEventMap` key. Previously only `FORBIDDEN_DOWN_EVENTS` was checked.
 - The popup relay only forwards known upstream / downstream event names.
+- `IframeExitRequestPayload.reason` is now `'user_back' | 'session_expired'`. The
+  `'error'` value was never emitted by the game client and has been removed.
+- `iframe.exit_request` is documented as fire-and-forget: the reply (`ack`) is
+  optional and does not change the game's behavior. The previous "reply within
+  5 seconds or the iframe shows its own error page" statement was never true.
 - Default iframe `title` is now `"Hashrace Game"`; popup window title is `"Hashrace"`.
 - README marks which upstream events the game client does not emit yet, and that
   the iframe does not consume downstream events yet.

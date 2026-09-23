@@ -10,7 +10,7 @@
  *       · "iframe.*"  — iframe → parent（上行）
  *       · "parent.*"  — parent → iframe（下行）
  *   - payload：每事件有专属 interface，不允许透传任意 JSON
- *   - nonce：UUID v4 字符串；ack 消息携带原始 nonce 以关联请求
+ *   - nonce：UUID v4 字符串；回执（ack，可选）携带原始 nonce 以关联请求
  */
 
 export const CHANNEL = 'hashrace.v1' as const;
@@ -36,11 +36,13 @@ export interface IframeSizeChangePayload {
 }
 
 /**
- * iframe 请求退出（用户按返回键、会话过期、严重错误）。
- * Partner 必须在 5 秒内回 ack，否则 iframe 会兜底跳转到自家错误页。
+ * iframe 请求退出。reason：user_back = 玩家点了返回；session_expired = 会话已过期。
+ *
+ * 发出即忘：iframe 不等待回执，也不按回执内容改变行为。Partner 回不回 ack、回 true 还是
+ * false 都不影响游戏——要不要收起 iframe 由 Partner 自己决定。
  */
 export interface IframeExitRequestPayload {
-    reason: 'user_back' | 'session_expired' | 'error';
+    reason: 'user_back' | 'session_expired';
 }
 
 /**
@@ -87,7 +89,7 @@ export type IframeSupportRequestPayload = Record<string, never>;
 
 /**
  * 玩家离开游戏（点「返回 {品牌}」或正常退出），Partner 应收起 iframe / 回到自家大厅。
- * 与 iframe.exit_request 不同：不需要 ack，iframe 发出后不等待父页回应。
+ * iframe 发出后不等待父页回应，也没有回执。
  */
 export interface IframeGameEndedPayload {
     game_id: string;

@@ -48,7 +48,7 @@ client.on('iframe.round_end', ({ round_id }) => {
 });
 
 client.on('iframe.exit_request', (_, ack) => {
-    ack({ accepted: true });
+    ack({ accepted: true }); // optional reply — the iframe does not wait for it
     // Then tear down the iframe or navigate back to your lobby.
 });
 ```
@@ -149,9 +149,9 @@ but the responsibility is still yours to keep:
    mutate game or session state.
 3. **HTTPS only** — `embedHashraceIframe` / `launchInPopup` throw on non-https `launchUrl`
    (dev exception: `http://localhost`).
-4. **Respond to `iframe.exit_request` within 5 seconds** — the iframe falls back
-   to its own error UI after 5 s. Call `ack({ accepted: true | false })` synchronously
-   from your handler.
+4. **`iframe.exit_request` is fire-and-forget** — the iframe does not wait for a
+   reply and does not change its behavior based on one. Calling `ack({ accepted })`
+   is optional; closing the iframe (or not) is entirely your decision.
 5. **Dispose on unmount** — always call `client.dispose()` (or `handle.dispose()`
    for popup mode) when the iframe / popup is removed, to detach the `message`
    listener.
@@ -163,7 +163,7 @@ but the responsibility is still yours to keep:
 | Event | Payload | Needs ack? | Emitted by the game client today? |
 |-------|---------|------------|-----------------------------------|
 | `iframe.ready` | `{ client_version, protocol_version }` | no | yes |
-| `iframe.exit_request` | `{ reason }` | **yes** (5 s) | yes |
+| `iframe.exit_request` | `{ reason }` — `user_back` / `session_expired` | no (optional reply) | yes |
 | `iframe.game_ended` | `{ game_id }` — player left the game ("Back to {brand}" or normal exit) | no | yes |
 | `iframe.retry_request` | `{}` — player tapped "Retry" on the maintenance screen; issue a fresh launch URL and re-mount the iframe (launch tokens are single-use) | no | yes |
 | `iframe.support_request` | `{}` — player tapped "Contact support"; open your support channel | no | yes |

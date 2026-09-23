@@ -30,13 +30,13 @@ export interface PartnerClientOptions {
 }
 
 /**
- * ack 函数签名：仅 iframe.exit_request 事件需要 ack 回包，
- * Partner 调用 `ack({ accepted: true/false })` 告知 iframe 是否允许退出。
+ * 回执函数签名：仅 iframe.exit_request 事件带它。回执可选，iframe 不等待也不按
+ * `accepted` 改变行为；不调用不会有任何后果。
  */
 export type AckSender = (payload: { accepted: boolean }) => void;
 
 /**
- * 上行事件 handler。对 iframe.exit_request 事件，ack 参数是必须同步调用的回调函数；
+ * 上行事件 handler。对 iframe.exit_request 事件，ack 参数是可选调用的回执函数；
  * 其他事件 ack 为 undefined。
  */
 export type UpHandler<E extends UpEventName> = (
@@ -106,7 +106,7 @@ export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
         const h = handlers.get(data.event);
         if (!h) return;
 
-        // ack 机制：目前只有 iframe.exit_request 需要 ack 回包
+        // 回执：目前只有 iframe.exit_request 带回执函数（可选调用）
         const needsAck = data.event === 'iframe.exit_request';
         const ack: AckSender | undefined = needsAck
             ? (ackPayload) => {

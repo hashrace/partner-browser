@@ -240,7 +240,7 @@ const { client } = embedHashraceIframe({
 | `channel` | 固定 `"hashrace.v1"`；破坏性变更会升为 `"hashrace.v2"` 并与 v1 并存至少 90 天 |
 | `event` | 事件名：`iframe.*` 为游戏发往你的页面，`parent.*` 为你的页面发往游戏 |
 | `payload` | 该事件的专属字段 |
-| `nonce` | UUID v4；需要应答的事件，应答里原样带回 |
+| `nonce` | UUID v4；回执（如 `iframe.exit_request.ack`）里原样带回 |
 
 ### 5.1 通道开通条件与安全校验
 
@@ -254,7 +254,7 @@ const { client } = embedHashraceIframe({
 | 事件 | payload | 需应答 | 说明 |
 |---|---|---|---|
 | `iframe.ready` | `{ client_version, protocol_version }` | 否 | 游戏加载完成，可隐藏你的 loading。`protocol_version` 恒为 `"hashrace.v1"`，用于特性检测 |
-| `iframe.exit_request` | `{ reason }` | **是，5 秒内** | 玩家请求退出。`reason` 取值 `user_back` / `session_expired` / `error`。应答后由你关闭 iframe 或回到大厅；5 秒内不应答，游戏显示自带错误页 |
+| `iframe.exit_request` | `{ reason }` | 否（回执可选） | 玩家请求退出。`reason` 取值 `user_back`（玩家点了返回）/ `session_expired`（会话已过期）。请关闭 iframe 或回到大厅。游戏发出后不等回执：回不回、回什么都不改变游戏的行为 |
 | `iframe.retry_request` | `{}` | 否 | 游戏内的会话已无法恢复（如维护后重试）。请**重新调 launch-session**，用新链接重新加载 iframe——旧链接的 token 已被兑换 |
 | `iframe.support_request` | `{}` | 否 | 玩家点了「联系客服」。请打开你的客服入口 |
 | `iframe.game_ended` | `{ game_id }` | 否 | 玩家离开了游戏。请关闭 iframe 或回到你的游戏列表 |
@@ -277,7 +277,7 @@ const { client } = embedHashraceIframe({
 
 **这笔净变动已经通过 Seamless Wallet Webhook 写进了你的钱包**。收到它只需刷新余额展示，**不要再记一次账**，否则玩家余额会被重复变动。
 
-`iframe.exit_request` 的应答：
+`iframe.exit_request` 的回执（**可选**）：
 
 ```json
 {
@@ -288,7 +288,7 @@ const { client } = embedHashraceIframe({
 }
 ```
 
-用本 SDK 时在回调里调用 `ack({ accepted: true | false })` 即可。
+这条事件是发出即忘（fire-and-forget）：游戏不等待回执，也不按 `accepted` 的取值改变行为——不回、晚回、回 `false` 都不会让游戏显示错误页或停留在原处。要不要关 iframe 完全由你这一侧决定。用本 SDK 时可以在回调里调用 `ack({ accepted: true | false })` 发回执，不调也可以。
 
 ### 5.3 你的页面 → 游戏
 
