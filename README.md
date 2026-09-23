@@ -3,9 +3,11 @@
 Official browser-side postMessage SDK for embedding Hashrace games in Partner websites.
 
 Implements the `hashrace.v1` channel: the contract between a Partner-owned parent
-page and an embedded Hashrace iframe. The protocol itself is defined in
-[hashmach-docs `architecture/iframe-postmessage.md`](https://github.com/hashrace/hashmach-docs/blob/main/architecture/iframe-postmessage.md) —
-the SDK is the reference implementation for the parent side.
+page and an embedded Hashrace iframe. The full integration contract — onboarding,
+the launch-session API, the launch URL format, every `hashrace.v1` event and field,
+the Seamless Wallet webhooks, signatures, idempotency and error codes — is in
+[`docs/integration-guide.md`](./docs/integration-guide.md). The SDK is the reference
+implementation for the parent side.
 
 ## Install
 
@@ -40,7 +42,7 @@ const { client } = embedHashraceIframe({
     container: document.getElementById('game')!,
 });
 
-client.on('iframe.round_end', ({ round_id, net_change_minor, currency }) => {
+client.on('iframe.round_end', ({ round_id }) => {
     // The net change has already been applied to your wallet via the Seamless
     // Webhook S2S channel. You only need to refresh the balance UI here.
 });
@@ -83,7 +85,7 @@ document.getElementById('play')!.addEventListener('click', () => {
     });
     if (!handle) return;
 
-    handle.on('iframe.round_end', ({ net_change_minor, currency }) => {
+    handle.on('iframe.round_end', () => {
         // refresh balance UI
     });
     handle.on('iframe.exit_request', (_, ack) => ack({ accepted: true }));
@@ -167,7 +169,7 @@ but the responsibility is still yours to keep:
 | `iframe.support_request` | `{}` — player tapped "Contact support"; open your support channel | no | yes |
 | `iframe.size_change` | `{ width, height }` | no | **not yet** |
 | `iframe.round_start` | `{ round_id, game_code, started_at }` | no | **not yet** |
-| `iframe.round_end` | `{ round_id, game_code, net_change_minor, currency, ended_at }` | no | **not yet** |
+| `iframe.round_end` | `{ round_id, game_code, net_change_micro, currency, ended_at }` — `net_change_micro` is a decimal-integer **string** in micro-units; the SDK typings still carry the previous `net_change_minor: number` and will follow (see [`docs/integration-guide.md` §5.2](./docs/integration-guide.md#52-游戏--你的页面)) | no | **not yet** |
 | `iframe.error` | `{ code, trace_id?, message }` | no | **not yet** |
 
 ### Downstream (parent → iframe, allowlisted)
