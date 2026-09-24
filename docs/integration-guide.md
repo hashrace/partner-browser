@@ -374,12 +374,12 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 | `currency` | string | 是 | 币种 |
 
 <!-- parity:webhook:BalanceResp -->
-| 响应字段 | 类型 | 说明 |
-|---|---|---|
-| `balance.amount` | int64 | 当前余额（微元） |
-| `balance.real_amount` | string | 同一金额的十进制文本 |
-| `balance.currency` | string | 币种回显 |
-| `balance.wallet_type` | string | `"C"` |
+| 响应字段 | 类型 | 必选 | 说明 |
+|---|---|---|---|
+| `balance.amount` | int64 | 是 | 当前余额（微元） |
+| `balance.real_amount` | string | 是 | 同一金额的十进制文本 |
+| `balance.currency` | string | 是 | 币种回显 |
+| `balance.wallet_type` | string | 是 | `"C"` |
 
 ### 6.4 `POST /wallet/debit`
 
@@ -400,14 +400,14 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 | `reason` | string | 否 | 人类可读说明，供报表 / 客服 |
 
 <!-- parity:webhook:DebitResp -->
-| 响应字段 | 类型 | 说明 |
-|---|---|---|
-| `new_balance.amount` | int64 | 扣款后余额（微元） |
-| `new_balance.real_amount` | string | 十进制文本 |
-| `new_balance.currency` | string | 币种回显 |
-| `new_balance.wallet_type` | string | `"C"` |
-| `partner_txn_id` | string | 你这边的交易 ID |
-| `completed_at` | int64 | 你这边落账时刻，Unix 秒 |
+| 响应字段 | 类型 | 必选 | 说明 |
+|---|---|---|---|
+| `new_balance.amount` | int64 | 是 | 扣款后余额（微元） |
+| `new_balance.real_amount` | string | 是 | 十进制文本 |
+| `new_balance.currency` | string | 是 | 币种回显 |
+| `new_balance.wallet_type` | string | 是 | `"C"` |
+| `partner_txn_id` | string | 是 | 你这边的交易 ID |
+| `completed_at` | int64 | 是 | 你这边落账时刻，Unix 秒 |
 
 示例：
 
@@ -461,16 +461,16 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 | `reason` | string | 否 | 冲正原因，如 `emergency_refund` / `manual_cancel` |
 
 <!-- parity:webhook:CancelResp -->
-| 响应字段 | 类型 | 说明 |
-|---|---|---|
-| `reverted_amount` | int64 | 被冲正的金额（微元） |
-| `reverted_real_amount` | string | 十进制文本 |
-| `new_balance.amount` | int64 | 冲正后余额（微元） |
-| `new_balance.real_amount` | string | 十进制文本 |
-| `new_balance.currency` | string | 币种 |
-| `new_balance.wallet_type` | string | `"C"` |
-| `partner_txn_id` | string | 你这边本次冲正的交易 ID |
-| `completed_at` | int64 | 冲正落账时刻，Unix 秒（可选） |
+| 响应字段 | 类型 | 必选 | 说明 |
+|---|---|---|---|
+| `reverted_amount` | int64 | 是 | 被冲正的金额（微元） |
+| `reverted_real_amount` | string | 是 | 十进制文本 |
+| `new_balance.amount` | int64 | 是 | 冲正后余额（微元） |
+| `new_balance.real_amount` | string | 是 | 十进制文本 |
+| `new_balance.currency` | string | 是 | 币种 |
+| `new_balance.wallet_type` | string | 是 | `"C"` |
+| `partner_txn_id` | string | 是 | 你这边本次冲正的交易 ID |
+| `completed_at` | int64 | 否 | 冲正落账时刻，Unix 秒（可选） |
 
 **必须遵守**：
 
@@ -487,16 +487,16 @@ Hashrace 在扣款结果未知（超时）时用它确认你那边到底有没�
 | `ref_id` | string | 是 | 要查询的交易 |
 
 <!-- parity:webhook:QueryTxnResp -->
-| 响应字段 | 类型 | 说明 |
-|---|---|---|
-| `status` | string | `completed` / `cancelled` / `not_found` |
-| `amount` | int64 | 交易金额（微元）；`not_found` 时省略 |
-| `real_amount` | string | 十进制文本；`not_found` 时省略 |
-| `currency` | string | 币种；`not_found` 时省略 |
-| `wallet_type` | string | `"C"`；`not_found` 时省略 |
-| `type` | string | 原交易的 `type`；`not_found` 时省略 |
-| `completed_at` | int64 | 落账时刻，Unix 秒；`not_found` 时省略 |
-| `partner_txn_id` | string | 你这边的交易 ID；`not_found` 时省略 |
+| 响应字段 | 类型 | 必选 | 说明 |
+|---|---|---|---|
+| `status` | string | 是 | `completed` / `cancelled` / `not_found` |
+| `amount` | int64 | 否 | 交易金额（微元）；`not_found` 时省略 |
+| `real_amount` | string | 否 | 十进制文本；`not_found` 时省略 |
+| `currency` | string | 否 | 币种；`not_found` 时省略 |
+| `wallet_type` | string | 否 | `"C"`；`not_found` 时省略 |
+| `type` | string | 否 | 原交易的 `type`；`not_found` 时省略 |
+| `completed_at` | int64 | 否 | 落账时刻，Unix 秒；`not_found` 时省略 |
+| `partner_txn_id` | string | 否 | 你这边的交易 ID；`not_found` 时省略 |
 
 `not_found` 时只返回 `{"status":"not_found"}`。迟到完成的交易（超过 3 秒才落账的那一笔）必须能被查到。
 
@@ -553,12 +553,12 @@ Hashrace 在扣款结果未知（超时）时用它确认你那边到底有没�
 ```
 
 <!-- parity:webhook:ErrorBody -->
-| 字段 | 必选 | 说明 |
-|---|---|---|
-| `error_code` | 是 | 下表之一 |
-| `message` | 否 | 人类可读说明，便于双方排查 |
-| `trace_id` | 否 | 你这边的链路 ID（W3C traceparent 或自定义） |
-| `retry_after_ms` | 否 | 仅 5xx 时可选，建议 Hashrace 的退避毫秒数 |
+| 字段 | 类型 | 必选 | 说明 |
+|---|---|---|---|
+| `error_code` | string | 是 | 下表之一 |
+| `message` | string | 否 | 人类可读说明，便于双方排查 |
+| `trace_id` | string | 否 | 你这边的链路 ID（W3C traceparent 或自定义） |
+| `retry_after_ms` | int64 | 否 | 仅 5xx 时可选，建议 Hashrace 的退避毫秒数 |
 
 ### 8.2 `error_code`
 
