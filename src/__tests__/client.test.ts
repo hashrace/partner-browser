@@ -228,17 +228,12 @@ describe('createPartnerClient', () => {
         expect(handler).not.toHaveBeenCalled();
     });
 
-    it('uses DEFAULT_CHILD_ORIGIN when expectedChildOrigin omitted', () => {
+    // 守的回归：曾有一个写死的默认 origin（没有任何环境真的用它），漏传时静默信任它、
+    // 真实游戏域名发来的消息全被当成钓鱼丢弃。
+    it('throws when expectedChildOrigin is missing or empty — there is no default origin', () => {
         const iframe = makeIframe();
-        const client = createPartnerClient({ iframe });
-        const handler = vi.fn();
-        client.on('iframe.ready', handler);
-
-        window.dispatchEvent(new MessageEvent('message', {
-            data: { channel: 'hashrace.v1', event: 'iframe.ready', payload: {}, nonce: 'n' },
-            origin: 'https://app.hashrace.com',
-            source: iframe.contentWindow,
-        }));
-        expect(handler).toHaveBeenCalledOnce();
+        expect(() => createPartnerClient({ iframe } as never)).toThrow(/expectedChildOrigin is required/);
+        expect(() => createPartnerClient({ iframe, expectedChildOrigin: '' })).toThrow(/expectedChildOrigin is required/);
+        expect(() => createPartnerClient({ iframe, expectedChildOrigin: [] })).toThrow(/expectedChildOrigin is required/);
     });
 });

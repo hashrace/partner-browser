@@ -87,9 +87,11 @@ X-Signature = f62885b72722357021cc3022218c294f3296a250e607422df1338bfdf36833b5
 |---|---|---|
 | 4 个 header 齐全 | 任一缺失即失败 | HTTP 401 + `PARTNER_WEBHOOK_SIGNATURE_INVALID` |
 | 时间戳 | 可解析为整数秒，且与你的服务器时间偏差 ≤ 300 秒 | HTTP 401 + `PARTNER_WEBHOOK_SIGNATURE_INVALID` |
-| Nonce | 10 分钟内未出现过（去重存储 TTL ≥ 10 分钟） | HTTP 401 + `PARTNER_WEBHOOK_SIGNATURE_INVALID` |
+| Nonce | 630 秒内未出现过（去重存储 TTL ≥ 630 秒） | HTTP 401 + `PARTNER_WEBHOOK_SIGNATURE_INVALID` |
 | API Key | 是你签发给 Hashrace 的那把 | HTTP 401 + `UNAUTHORIZED` |
 | 签名 | 重算后与 `X-Signature` 常量时间比较相等 | HTTP 401 + `PARTNER_WEBHOOK_SIGNATURE_INVALID` |
+
+**Nonce 去重窗口为什么是 630 秒**：时间戳容忍 D = 300 秒时，一个请求从「刚能通过时间戳检查」到「刚好不能」横跨 2D = 600 秒（发送方时钟快 D 与慢 D 两个极端之间）。去重窗口必须不短于这一段再加一点余量，即 **≥ 2D + 30 秒 = 630 秒**；短于它（例如 10 分钟 = 600 秒）会留出一段时间戳仍被放行、而 Nonce 记录已过期的空档，截获的请求可以原样重放。你若调大时间戳容忍，去重窗口要同步按 2D + 30 秒抬高。
 
 ---
 
@@ -173,7 +175,7 @@ Idempotency-Key: <每次启动一个新的 UUID>
 | `PARTNER_SIGNATURE_REQUIRED` | 401 | 签名头缺失或格式不对 | 检查 4 个签名头 |
 | `PARTNER_TIMESTAMP_INVALID` | 401 | 时间戳不可解析或偏差超过 300 秒 | 校准服务器时钟 |
 | `PARTNER_SIGNATURE_INVALID` | 401 | 签名不匹配或 API Key 无效 | 对照 §2 金标向量排查 |
-| `PARTNER_NONCE_REPLAY` | 401 | 10 分钟内重复使用了同一个 Nonce | 每个请求生成新 Nonce |
+| `PARTNER_NONCE_REPLAY` | 401 | 630 秒内重复使用了同一个 Nonce | 每个请求生成新 Nonce |
 | `PARTNER_SUSPENDED` | 401 | 你的 Partner 当前处于暂停状态 | 联系 Hashrace 商务 |
 | `PARTNER_IP_NOT_ALLOWED` | 403 | 出口 IP 不在白名单内 | 在 Operator Portal 登记出口 IP |
 | `IDEMPOTENCY_KEY_REQUIRED` | 400 | 没带 `Idempotency-Key` | 补上请求头 |

@@ -9,10 +9,10 @@ describe('embedHashraceIframe', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const { iframe } = embedHashraceIframe({
-            launchUrl: 'https://app.hashrace.com/lobby?launch=lt_abc',
+            launchUrl: 'https://app.hashrace.com/game/mines?launch=lt_abc',
             container,
         });
-        expect(iframe.src).toBe('https://app.hashrace.com/lobby?launch=lt_abc');
+        expect(iframe.src).toBe('https://app.hashrace.com/game/mines?launch=lt_abc');
         expect(iframe.getAttribute('referrerpolicy')).toBe('strict-origin-when-cross-origin');
         const allowAttr = iframe.getAttribute('allow') ?? '';
         expect(allowAttr).toBe(DEFAULT_IFRAME_ALLOW);
@@ -27,7 +27,7 @@ describe('embedHashraceIframe', () => {
     it('rejects non-https launchUrl', () => {
         const container = document.createElement('div');
         expect(() => embedHashraceIframe({
-            launchUrl: 'http://app.hashrace.com/lobby?launch=x',
+            launchUrl: 'http://app.hashrace.com/game/mines?launch=x',
             container,
         })).toThrow(/https/i);
     });
@@ -44,7 +44,7 @@ describe('embedHashraceIframe', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const { client } = embedHashraceIframe({
-            launchUrl: 'https://app-staging.hashrace.com/lobby?launch=lt',
+            launchUrl: 'https://app-staging.hashrace.com/game/mines?launch=lt',
             container,
         });
         expect(typeof client.on).toBe('function');
@@ -56,7 +56,7 @@ describe('embedHashraceIframe', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const { iframe } = embedHashraceIframe({
-            launchUrl: 'https://app.hashrace.com/lobby',
+            launchUrl: 'https://app.hashrace.com/game/mines',
             container,
             width: '1024px',
             height: '768px',
@@ -71,7 +71,7 @@ describe('embedHashraceIframe', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const { client } = embedHashraceIframe({
-            launchUrl: 'https://app.hashrace.com/lobby',
+            launchUrl: 'https://app.hashrace.com/game/mines',
             container,
             expectedChildOrigin: 'https://app-eu.hashrace.com',
         });
@@ -82,7 +82,7 @@ describe('embedHashraceIframe', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const { iframe } = embedHashraceIframe({
-            launchUrl: 'https://app.hashrace.com/lobby',
+            launchUrl: 'https://app.hashrace.com/game/mines',
             container,
             iframeAllow: 'camera *; microphone *',
         });
@@ -93,7 +93,7 @@ describe('embedHashraceIframe', () => {
         const container = document.createElement('div');
         document.body.appendChild(container);
         const { iframe } = embedHashraceIframe({
-            launchUrl: 'https://app.hashrace.com/lobby',
+            launchUrl: 'https://app.hashrace.com/game/mines',
             container,
             iframeAllow: '',
         });

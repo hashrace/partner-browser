@@ -7,7 +7,8 @@ import { embedHashraceIframe, type PartnerClient } from '@hashrace/partner-brows
 
 /**
  * React 版 Hashrace iframe 容器。
- * launchUrl 由 Partner 后端调用 Hashrace /api/v1/partner/launch-session 获取后下发到前端。
+ * launchUrl 由 Partner 后端调 Hashrace /api/v1/partner/launch-session 拿到 launch_token，
+ * 拼成 https://{Hashrace 游戏域名}/game/{game_id}?launch={launch_token} 后下发到前端。
  */
 export function App({ launchUrl }: { launchUrl: string }) {
     const containerRef = useRef<HTMLDivElement>(null);

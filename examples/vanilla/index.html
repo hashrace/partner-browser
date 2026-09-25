@@ -28,7 +28,8 @@
         };
 
         // launchUrl 必须由你自己的后端签发：后端持 API Key 调 Hashrace 的
-        // /api/v1/partner/launch-session，再把返回的 URL 交给已登录的玩家页面。
+        // /api/v1/partner/launch-session 拿到 launch_token，拼成
+        // https://{Hashrace 游戏域名}/game/{game_id}?launch={launch_token} 交给已登录的玩家页面。
         // 不要从页面 query / hash 里读 launchUrl——那等于让任意链接决定 iframe 加载什么（反射型 XSS / 钓鱼）。
         // `/api/hashrace/launch` 是示意路径，换成你后端的实际接口。
         async function fetchLaunchUrl() {

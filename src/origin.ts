@@ -16,8 +16,3 @@ export function isExpectedOrigin(
     const list = Array.isArray(expected) ? expected : [expected];
     return list.includes(actual);
 }
-
-/**
- * Hashrace 生产环境默认 origin。Partner 样例若未显式传 expectedChildOrigin 时使用。
- */
-export const DEFAULT_CHILD_ORIGIN = 'https://app.hashrace.com';

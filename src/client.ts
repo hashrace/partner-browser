@@ -7,7 +7,7 @@ import {
     UpEventName,
     assertSendableDownEvent,
 } from './events';
-import { isExpectedOrigin, DEFAULT_CHILD_ORIGIN } from './origin';
+import { isExpectedOrigin } from './origin';
 
 /**
  * 创建 PartnerClient 时的可选参数。
@@ -16,10 +16,12 @@ export interface PartnerClientOptions {
     /** Partner 页面已经创建并挂入 DOM 的 iframe 元素。 */
     iframe: HTMLIFrameElement;
     /**
-     * 期望的 iframe 侧 origin。默认 DEFAULT_CHILD_ORIGIN（生产）。
+     * 期望的 iframe 侧 origin，即启动链接的 origin（`https://{Hashrace 游戏域名}`）。
+     * 游戏域名开通时由 Hashrace 告知、按环境不同，所以没有默认值——猜一个默认域名，
+     * 猜错时所有消息被静默当成钓鱼丢弃。embed / popup 两个入口从 launchUrl 自动取。
      * 支持数组以适配多环境（staging/prod）；send() 发消息时用数组首元素作 targetOrigin。
      */
-    expectedChildOrigin?: string | readonly string[];
+    expectedChildOrigin: string | readonly string[];
     /**
      * 安全违规回调。触发时机：
      *   - origin 不在白名单（大概率被钓鱼或第三方脚本误触发）
@@ -74,7 +76,10 @@ export interface PartnerClient {
  *   - postMessage targetOrigin 严格使用 expected（数组取首元素），不使用 "*"
  */
 export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
-    const expected = opts.expectedChildOrigin ?? DEFAULT_CHILD_ORIGIN;
+    const expected = opts.expectedChildOrigin;
+    if (Array.isArray(expected) ? expected.length === 0 : !expected) {
+        throw new Error('[@hashrace/partner-browser] expectedChildOrigin is required (the origin of the launch URL)');
+    }
     const handlers = new Map<string, UpHandler<UpEventName>>();
     const onViolation = opts.onSecurityViolation ?? (() => { /* no-op */ });
 
@@ -82,7 +87,7 @@ export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
     // 否则直接使用字符串。绝不使用 "*" 以避免向任意 origin 泄漏消息。
     const targetOrigin: string = (() => {
         if (Array.isArray(expected)) {
-            return expected[0] ?? DEFAULT_CHILD_ORIGIN;
+            return expected[0] as string;
         }
         return expected as string;
     })();

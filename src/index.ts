@@ -39,4 +39,4 @@ export type {
     ParentResumePayload,
 } from './events';
 
-export { DEFAULT_CHILD_ORIGIN, isExpectedOrigin } from './origin';
+export { isExpectedOrigin } from './origin';

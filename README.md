@@ -38,7 +38,7 @@ Zero runtime dependencies. ES Module + CommonJS + `.d.ts` ship together.
 import { embedHashraceIframe } from '@hashrace/partner-browser';
 
 const { client } = embedHashraceIframe({
-    launchUrl: '<from your backend /api/v1/partner/launch-session>',
+    launchUrl, // https://{game domain}/game/{game_id}?launch={launch_token}, built by your backend
     container: document.getElementById('game')!,
 });
 
@@ -65,7 +65,9 @@ import { createPartnerClient } from '@hashrace/partner-browser';
 const iframe = document.querySelector('iframe#hashrace-game')!;
 const client = createPartnerClient({
     iframe,
-    expectedChildOrigin: 'https://app.hashrace.com',
+    // Required: the origin of your launch URL (https://{Hashrace game domain}),
+    // assigned at onboarding and different per environment. There is no default.
+    expectedChildOrigin: HASHRACE_GAME_ORIGIN,
     onSecurityViolation: (reason, detail) => telemetry.report(reason, detail),
 });
 ```
@@ -79,7 +81,7 @@ import { launchInPopup } from '@hashrace/partner-browser';
 
 document.getElementById('play')!.addEventListener('click', () => {
     const handle = launchInPopup({
-        launchUrl: '<from your backend /api/v1/partner/launch-session>',
+        launchUrl, // https://{game domain}/game/{game_id}?launch={launch_token}, built by your backend
         window: { width: 1280, height: 720 },
         onPopupBlocked: () => alert('Please allow popups for this site to launch the game.'),
     });
@@ -140,7 +142,9 @@ These are not optional. The SDK encodes them so you don't have to re-derive them
 but the responsibility is still yours to keep:
 
 1. **Origin verification** — enforced by default. Do not pass `"*"`. If your product
-   has both prod and staging, pass an array: `['https://app.hashrace.com', 'https://app-staging.hashrace.com']`.
+   has both prod and staging, pass an array of the two game origins Hashrace assigned
+   you. `createPartnerClient` has no default origin and throws without one;
+   `embedHashraceIframe` / `launchInPopup` take it from `launchUrl`.
 2. **Never send financial, session, or game-control events from the parent page.**
    `send()` only accepts the downstream events listed below and throws on anything
    else. Names such as `deposit_done`, `logout`, `force_bet`, `revoke_session`

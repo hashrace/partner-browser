@@ -20,6 +20,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Breaking:** `createPartnerClient` now requires `expectedChildOrigin` and throws
+  when it is missing or empty. `DEFAULT_CHILD_ORIGIN` (`https://app.hashrace.com`)
+  has been removed: no environment actually serves the game there, and the game
+  domain is assigned at onboarding per environment — a wrong default silently
+  dropped every message as an origin mismatch. `embedHashraceIframe` /
+  `launchInPopup` are unaffected (they take the origin from `launchUrl`).
+- Docs and examples use the only launch path the game client accepts,
+  `/game/{game_id}?launch={launch_token}` (previously `/lobby?launch=`).
+- Integration guide: the nonce de-duplication window is 630 seconds
+  (≥ 2 × 300 s timestamp tolerance + 30 s), not 10 minutes.
 - `send()` (both `PartnerClient` and `PopupHandle`) now rejects any event that is
   not a `DownEventMap` key. Previously only `FORBIDDEN_DOWN_EVENTS` was checked.
 - The popup relay only forwards known upstream / downstream event names.

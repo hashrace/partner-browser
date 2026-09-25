@@ -6,9 +6,10 @@ import { DEFAULT_IFRAME_ALLOW } from './popup';
  */
 export interface EmbedOptions {
     /**
-     * Hashrace 后端返回的一次性启动 URL，形如 https://app.hashrace.com/lobby?launch=lt_xxx。
+     * 一次性启动 URL，形如 https://{Hashrace 游戏域名}/game/{game_id}?launch={launch_token}&lang={lang}。
+     * `/game/{game_id}` 是游戏客户端唯一接受的启动路径，其他路径打开的是错误页。
      * 必须是 HTTPS。Partner 后端用自己的 API Key 调 Hashrace 的 /api/v1/partner/launch-session
-     * 获取该 URL，然后把 URL 下发到前端（不要把 API Key 下发到前端）。
+     * 拿到 launch_token，按上面的格式拼好后下发到前端（不要把 API Key 下发到前端）。
      */
     launchUrl: string;
     /** iframe 挂载的容器 DOM 元素。 */

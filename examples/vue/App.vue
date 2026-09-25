@@ -7,7 +7,8 @@ import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { embedHashraceIframe, type PartnerClient } from '@hashrace/partner-browser';
 
 // Vue 3 <script setup> 版 Hashrace iframe 容器。
-// launchUrl 由 Partner 后端调用 Hashrace /api/v1/partner/launch-session 获取后下发到前端。
+// launchUrl 由 Partner 后端调 Hashrace /api/v1/partner/launch-session 拿到 launch_token，
+// 拼成 https://{Hashrace 游戏域名}/game/{game_id}?launch={launch_token} 后下发到前端。
 const props = defineProps<{ launchUrl: string }>();
 const container = ref<HTMLDivElement | null>(null);
 let client: PartnerClient | null = null;
