@@ -23,8 +23,8 @@ export function App({ launchUrl }: { launchUrl: string }) {
             },
         });
 
-        client.on('iframe.round_end', ({ net_change_minor, currency, round_id }) => {
-            console.log(`round ${round_id} ended, net: ${net_change_minor} ${currency}`);
+        client.on('iframe.round_end', ({ net_change_micro, currency, round_id }) => {
+            console.log(`round ${round_id} ended, net: ${net_change_micro} micro ${currency}`);
             // 此处可触发 Partner 自家钱包余额刷新 UI
         });
 

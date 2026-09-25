@@ -34,7 +34,7 @@ const SDK_PAYLOAD_FIELDS: { [E in UpEventName]: readonly string[] } = {
     'iframe.exit_request': keysOf<UpEventMap['iframe.exit_request']>()('reason'),
     'iframe.round_start': keysOf<UpEventMap['iframe.round_start']>()('round_id', 'game_code', 'started_at'),
     'iframe.round_end': keysOf<UpEventMap['iframe.round_end']>()(
-        'round_id', 'game_code', 'net_change_minor', 'currency', 'ended_at',
+        'round_id', 'game_code', 'net_change_micro', 'currency', 'ended_at',
     ),
     'iframe.error': keysOf<UpEventMap['iframe.error']>()('code', 'trace_id', 'message'),
     'iframe.retry_request': keysOf<UpEventMap['iframe.retry_request']>()(),
@@ -53,6 +53,14 @@ void exitReasons;
 // @ts-expect-error 'error' 不是合法的退出原因
 const staleExitReason: UpEventMap['iframe.exit_request']['reason'] = 'error';
 void staleExitReason;
+
+// 净变动是微元十进制字符串：number 在高面值币种上越过安全整数，父页静默丢位。
+// 类型若被改回 number，这里编译失败。
+const roundEndNet: UpEventMap['iframe.round_end']['net_change_micro'] = '-1500000';
+void roundEndNet;
+// @ts-expect-error net_change_micro 不接受 number
+const numericNet: UpEventMap['iframe.round_end']['net_change_micro'] = 1_500_000;
+void numericNet;
 
 const sorted = (xs: readonly string[]): string[] => [...xs].sort();
 

@@ -62,8 +62,15 @@ export interface IframeRoundStartPayload {
 export interface IframeRoundEndPayload {
     round_id: string;
     game_code: string;
-    net_change_minor: number;
+    /**
+     * 本局玩家净变动，微元（1 个币种单位 = 1,000,000 微元），十进制整数字符串（`^-?[0-9]+$`），
+     * 负数表示玩家净亏。用字符串是因为高面值币种的微元金额会越过 `number` 的安全整数范围，
+     * 请用 `BigInt(net_change_micro)` 解析，展示时按 `currency` 的小数位换算。
+     */
+    net_change_micro: string;
+    /** 本局币种代码（`^[A-Z]{3,5}$`），与 Seamless Webhook 里的 `currency` 同一取值 */
     currency: string;
+    /** 服务端时间戳，Unix 毫秒 */
     ended_at: number;
 }
 

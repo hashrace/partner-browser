@@ -25,8 +25,8 @@ export function PopupApp({ launchUrl }: { launchUrl: string }) {
         setActive(true);
         setStatus('游戏窗口已启动');
 
-        handle.on('iframe.round_end', ({ net_change_minor, currency, round_id }) => {
-            console.log(`round ${round_id} net=${net_change_minor} ${currency}`);
+        handle.on('iframe.round_end', ({ net_change_micro, currency, round_id }) => {
+            console.log(`round ${round_id} net=${net_change_micro} micro ${currency}`);
             // 此处可触发 Partner 自家钱包余额刷新 UI
         });
         handle.on('iframe.exit_request', (_, ack) => ack({ accepted: true }));

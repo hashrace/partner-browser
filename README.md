@@ -169,7 +169,7 @@ but the responsibility is still yours to keep:
 | `iframe.support_request` | `{}` — player tapped "Contact support"; open your support channel | no | yes |
 | `iframe.size_change` | `{ width, height }` | no | **not yet** |
 | `iframe.round_start` | `{ round_id, game_code, started_at }` | no | **not yet** |
-| `iframe.round_end` | `{ round_id, game_code, net_change_micro, currency, ended_at }` — `net_change_micro` is a decimal-integer **string** in micro-units; the SDK typings still carry the previous `net_change_minor: number` and will follow (see [`docs/integration-guide.md` §5.2](./docs/integration-guide.md#52-游戏--你的页面)) | no | **not yet** |
+| `iframe.round_end` | `{ round_id, game_code, net_change_micro, currency, ended_at }` — `net_change_micro` is a decimal-integer **string** in micro-units; parse it with `BigInt` (see [`docs/integration-guide.md` §5.2](./docs/integration-guide.md#52-游戏--你的页面)) | no | **not yet** |
 | `iframe.error` | `{ code, trace_id?, message }` | no | **not yet** |
 
 ### Downstream (parent → iframe, allowlisted)

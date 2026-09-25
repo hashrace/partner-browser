@@ -25,7 +25,7 @@ onMounted(() => {
     client = r.client;
     iframe = r.iframe;
     client.on('iframe.round_end', (p) => {
-        console.log(`round ${p.round_id} net=${p.net_change_minor} ${p.currency}`);
+        console.log(`round ${p.round_id} net=${p.net_change_micro} micro ${p.currency}`);
     });
     client.on('iframe.exit_request', (_, ack) => {
         ack({ accepted: true });

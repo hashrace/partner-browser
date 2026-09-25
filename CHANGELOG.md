@@ -28,6 +28,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `iframe.exit_request` is documented as fire-and-forget: the reply (`ack`) is
   optional and does not change the game's behavior. The previous "reply within
   5 seconds or the iframe shows its own error page" statement was never true.
+- **Breaking:** `IframeRoundEndPayload.net_change_minor: number` is replaced by
+  `net_change_micro: string` — the net change in micro-units (1 currency unit =
+  1,000,000) as a decimal-integer string. Micro-unit amounts on high-denomination
+  currencies exceed `Number.MAX_SAFE_INTEGER`; parse with `BigInt`. `currency` is
+  unchanged.
 - Default iframe `title` is now `"Hashrace Game"`; popup window title is `"Hashrace"`.
 - README marks which upstream events the game client does not emit yet, and that
   the iframe does not consume downstream events yet.

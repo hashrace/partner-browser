@@ -26,7 +26,7 @@ function onClick(launchUrl: string): void {
     status.value = '游戏窗口已启动';
 
     h.on('iframe.round_end', (p) => {
-        console.log(`round ${p.round_id} net=${p.net_change_minor} ${p.currency}`);
+        console.log(`round ${p.round_id} net=${p.net_change_micro} micro ${p.currency}`);
     });
     h.on('iframe.exit_request', (_, ack) => ack({ accepted: true }));
     h.onClosed(() => {
