@@ -116,7 +116,6 @@ Idempotency-Key: <每次启动一个新的 UUID>
     "nickname": "Alice",
     "currency": "USDT",
     "target_mode": "game",
-    "allowed_parent_origins": ["https://www.example.com"],
     "created_at": 1731042000
   }
 }
@@ -135,7 +134,6 @@ Idempotency-Key: <每次启动一个新的 UUID>
 | `data.target_mode` | string | 否 | `"game"`（直接进入游戏）或 `"lobby"` |
 | `data.extra_params` | object（string → string） | 否 | 原样透传给游戏客户端的附加参数，Hashrace 不解读 |
 | `data.strict_context_check` | boolean | 否 | 为 `true` 时，兑换 token 的浏览器 IP / UA 必须与上面两个字段严格一致，否则拒绝进入 |
-| `data.allowed_parent_origins` | string[] | 否 | 嵌入游戏的父页 origin 列表。**不影响 postMessage 通道**（见 §5.1），游戏客户端不读取它，可不填；填写时须合规，否则整个请求以 `INVALID_PARAMS` 拒绝。每条形如 `https://www.example.com`：必须 `https://`、不带路径 / query / 末尾斜杠、host 小写；可用 `*` 通配**单级**子域（`https://*.example.com`），但不接受 `https://*.*`、`https://*example.com` 这类等于全网的写法。最多 16 条，单条 ≤ 300 字节 |
 | `data.created_at` | integer | 否 | 你这边签发时刻，Unix 秒 |
 
 玩家可见的品牌名由 Hashrace 按你的签约主体填入，请求体里带了也会被忽略。
@@ -181,7 +179,7 @@ Idempotency-Key: <每次启动一个新的 UUID>
 | `IDEMPOTENCY_KEY_REQUIRED` | 400 | 没带 `Idempotency-Key` | 补上请求头 |
 | `IDEMPOTENCY_KEY_MISMATCH` | 409 | 同一个 `Idempotency-Key` 配了不同的请求体 | 新的启动换新 key |
 | `IDEMPOTENCY_REQUEST_IN_FLIGHT` | 409 | 同一个 key 的上一次请求还在处理 | 稍后用同一个 key 重试 |
-| `INVALID_PARAMS` | 400 | 字段非法：`external_player_id` 为空 / 过长、`allowed_parent_origins` 写法不合规、币种格式不对 | 按 `trace_id` 与 message 修正参数 |
+| `INVALID_PARAMS` | 400 | 字段非法：`external_player_id` 为空 / 过长、币种格式不对 | 按 `trace_id` 与 message 修正参数 |
 | `OPERATOR_CURRENCY_NOT_ACTIVE` | 400 | `currency` 不在你的可用币种里 | 换币种，或在 Portal 申请开通 |
 | `RATE_LIMITED` | 429 | 调用频率超出配额 | 退避后重试（重试沿用同一个 `Idempotency-Key`） |
 
@@ -244,7 +242,7 @@ const { client } = embedHashraceIframe({
 
 ### 5.1 通道开通条件与安全校验
 
-- 通道不依赖 `allowed_parent_origins` 白名单，也不依赖本次是否刚兑换过 launch（玩家刷新页面照样开通）。游戏发出的每条消息都定向到嵌入它的那个页面的 origin——先取 `location.ancestorOrigins[0]`，浏览器不提供时取 `document.referrer` 的 origin；两者都取不到时不发送任何事件，不会退化成向任意 origin 广播。因此请不要给 iframe 设 `referrerpolicy="no-referrer"`：在不提供 `location.ancestorOrigins` 的浏览器（如 Firefox）上，游戏会因此拿不到你的 origin 而不发事件。本 SDK 的 `embedHashraceIframe` 用的是 `strict-origin-when-cross-origin`，满足要求。
+- 通道不依赖任何 Partner 域白名单（Hashrace 不需要你登记父页域名），也不依赖本次是否刚兑换过 launch（玩家刷新页面照样开通）。游戏发出的每条消息都定向到嵌入它的那个页面的 origin——先取 `location.ancestorOrigins[0]`，浏览器不提供时取 `document.referrer` 的 origin；两者都取不到时不发送任何事件，不会退化成向任意 origin 广播。因此请不要给 iframe 设 `referrerpolicy="no-referrer"`：在不提供 `location.ancestorOrigins` 的浏览器（如 Firefox）上，游戏会因此拿不到你的 origin 而不发事件。本 SDK 的 `embedHashraceIframe` 用的是 `strict-origin-when-cross-origin`，满足要求。
 - 游戏只接收来自嵌入它的那个页面 origin 的消息（例如 `iframe.exit_request.ack`），其他来源一律丢弃。
 - 游戏侧的定向只保护「消息不发错地方」，不替你校验来源——请按下一条在你这一侧校验。
 - 接收消息时必须**依次**校验：`event.source === iframe.contentWindow` → `event.origin` 是 Hashrace 游戏的 origin（开通时告知；不接受 `"*"`，也不接受字面 `"null"`）→ `data.channel === "hashrace.v1"`。任一不符即丢弃。本 SDK 默认执行这三步。
