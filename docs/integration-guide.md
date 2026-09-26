@@ -459,7 +459,7 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 | `player_id` | string | 是 | 玩家 ID |
 | `wallet_type` | string | 是 | `"C"` |
 | `original_ref_id` | string | 是 | 被冲正交易的 `ref_id` |
-| `reason` | string | 否 | 冲正原因，如 `emergency_refund` / `manual_cancel` |
+| `reason` | string | 否 | 冲正原因，如 `emergency_refund` / `manual_cancel` / `round_lost_unsettled`（见下「局作废」） |
 
 <!-- parity:webhook:CancelResp -->
 | 响应字段 | 类型 | 必选 | 说明 |
@@ -477,6 +477,12 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 
 - **没见过的 `original_ref_id` 必须返回 200 空冲正**：`reverted_amount = 0`、`reverted_real_amount = "0"`、`new_balance` 为当前余额、照常回填 `partner_txn_id`。**不要返回 4xx**。原因：Hashrace 可能在扣款请求到达你之前就已决定冲正（那笔扣款在你这边根本没发生过），此时冲正什么都不应改变。重复收到同一个未知单号的冲正同样返回 200 空冲正。接入验证的必跑用例专门检查这一条。
 - `NOT_CANCELLABLE` 只用于「这笔交易**存在**但不可冲正」：已最终结算、已冲正过，或它本身就是一笔冲正。
+
+**局作废（`reason = round_lost_unsettled`）**：玩家下注扣款之后、这一局结算之前，承载它的游戏服务器没了（崩溃 / 被强制终止）。这一局不会被恢复或结算：Hashrace 在冲正期限（下注后约 1 小时；多步玩法从玩家最后一次局内操作起算）到点后对那笔 debit 发 `/wallet/cancel`，全额退回本金。请把它当作**这一局作废**处理：
+
+- 冲正之后这一局迟到的派彩会被 Hashrace 拦下、不按原额发给你，转人工核对；只有核对确认这一局其实已经结算过时，才补付净赢（派彩 − 已退本金），用独立的 `ref_id`（`<原派彩 ref_id>:topup`）
+- Hashrace 的局记录里这一局是**作废局**（投注额如实记录、派彩 0、不计有效投注，不进 GGR / 分成）；随后局记录上会带上这一局公开的服务端种子，玩家与你都能按公平性说明校验
+- 玩家回到这个游戏时会看到「上一局因服务故障作废，本金已退回」的提示；余额以你这边钱包为准
 
 ### 6.7 `POST /wallet/query-txn`
 
