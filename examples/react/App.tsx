@@ -26,7 +26,7 @@ export function App({ launchUrl }: { launchUrl: string }) {
 
         client.on('iframe.round_end', ({ net_change_micro, currency, round_id }) => {
             console.log(`round ${round_id} ended, net: ${net_change_micro} micro ${currency}`);
-            // 此处可触发 Partner 自家钱包余额刷新 UI
+            // 游戏客户端尚未发送此事件，余额刷新不要挂在这里：改在 iframe.game_ended / iframe.exit_request 时刷新
         });
 
         client.on('iframe.exit_request', (_, ack) => {

@@ -35,7 +35,29 @@ Hashrace 是 B2B 游戏内容供应商：**玩家与玩家资金始终归你**�
    - 可用币种（`allowed_currencies`）：Hashrace 只接受你登记为可用的币种，不做任何币种换算
    - 调用 launch-session API 的出口 IP 白名单
 3. **实现钱包接口**：按 [§6](#6-seamless-wallet-webhook) 实现 5 个端点，按 [§7](#7-幂等与重试) 实现幂等。
-4. **跑接入验证**：在 Operator Portal「接入验证」中录入测试玩家，运行全部必跑用例。Hashrace 会向你的待验证 URL 发送真实签名的测试请求（带请求头 `X-Hashrace-Test-Scenario`，取值 `normal` / `force_5xx` / `force_timeout`，这个头不参与签名），覆盖正常扣款、余额不足、玩家不存在、派彩、派彩幂等、错误签名、5xx 后重投、未知单号冲正。全部通过后确认就绪。
+4. **跑接入验证**：在 Operator Portal「接入验证」中录入测试玩家，运行全部必跑用例。Hashrace 会向你的待验证 URL 发送真实签名的测试请求，每个请求都带请求头 `X-Hashrace-Test-Scenario`（这个头不参与签名，只出现在发往待验证 URL 的请求上），你的待验证环境要按它的取值行事：
+
+   | `X-Hashrace-Test-Scenario` | 你需要做的 |
+   |---|---|
+   | `normal` | 按正常业务处理 |
+   | `force_5xx` | 同一个 `ref_id` **第一次**收到时回 HTTP 503（不动账、不记幂等）；之后同一个 `ref_id` 再来，按正常业务处理并回 200 |
+   | `force_timeout` | 让这次请求超过 3 秒才返回（Hashrace 按超时处理） |
+
+   必跑 9 项：
+
+   | 用例 | Hashrace 发什么 | 通过条件 |
+   |---|---|---|
+   | `DEBIT_NORMAL` | 余额充足的测试玩家一笔 debit | 200 |
+   | `DEBIT_INSUFFICIENT` | 余额不足的测试玩家一笔 debit | 422 `INSUFFICIENT_BALANCE` |
+   | `DEBIT_PLAYER_NOT_FOUND` | 不存在的玩家一笔 debit | 404 `PLAYER_NOT_FOUND` |
+   | `CREDIT_NORMAL` | 一笔 credit | 200 |
+   | `CREDIT_IDEMPOTENT` | 同一 `ref_id` 的 credit 发两次 | 两次都 200，`partner_txn_id` 相同 |
+   | `SIGNATURE_ERROR` | 签名错误的请求 | 401 |
+   | `RETRY_5XX` | 一笔 credit，带 `force_5xx`；收到 503 后 Hashrace 退避并用同一个 `ref_id` 重发 | 重发拿到 200，且只记一笔 |
+   | `CANCEL_UNKNOWN_REF` | 冲正一个你从没见过的 `original_ref_id` | 200 空冲正（§6.6） |
+   | `CONCURRENT_SAME_REF` | 同一 `ref_id`、逐字节相同的 credit **同时**发 5 个 | 每个都是 200 或 409 `IDEMPOTENT_CONFLICT`、至少一个 200，所有 200 的 `partner_txn_id` 与 `new_balance.amount` 相同（§7.1） |
+
+   选跑（不影响确认就绪）：`TIMEOUT`（带 `force_timeout`）、`SLB_HEALTH`（`GET {Webhook base URL}/health`，回 200）。全部必跑通过后确认就绪。
 5. **上线**：Hashrace 把你的 Webhook 切到生效状态。之后你的后端调 launch-session、在页面里嵌入游戏即可。
 
 ---
@@ -88,7 +110,7 @@ X-Signature = f62885b72722357021cc3022218c294f3296a250e607422df1338bfdf36833b5
 | 4 个 header 齐全 | 任一缺失即失败 | HTTP 401 + `PARTNER_WEBHOOK_SIGNATURE_INVALID` |
 | 时间戳 | 可解析为整数秒，且与你的服务器时间偏差 ≤ 300 秒 | HTTP 401 + `PARTNER_WEBHOOK_SIGNATURE_INVALID` |
 | Nonce | 630 秒内未出现过（去重存储 TTL ≥ 630 秒） | HTTP 401 + `PARTNER_WEBHOOK_SIGNATURE_INVALID` |
-| API Key | 是你签发给 Hashrace 的那把 | HTTP 401 + `UNAUTHORIZED` |
+| API Key | 是 Hashrace 签发给你的那把（Hashrace 发来的 Webhook 用的就是你手上这把 Key） | HTTP 401 + `UNAUTHORIZED` |
 | 签名 | 重算后与 `X-Signature` 常量时间比较相等 | HTTP 401 + `PARTNER_WEBHOOK_SIGNATURE_INVALID` |
 
 **Nonce 去重窗口为什么是 630 秒**：时间戳容忍 D = 300 秒时，一个请求从「刚能通过时间戳检查」到「刚好不能」横跨 2D = 600 秒（发送方时钟快 D 与慢 D 两个极端之间）。去重窗口必须不短于这一段再加一点余量，即 **≥ 2D + 30 秒 = 630 秒**；短于它（例如 10 分钟 = 600 秒）会留出一段时间戳仍被放行、而 Nonce 记录已过期的空档，截获的请求可以原样重放。你若调大时间戳容忍，去重窗口要同步按 2D + 30 秒抬高。
@@ -107,6 +129,14 @@ Idempotency-Key: <每次启动一个新的 UUID>
 ```
 
 **`Idempotency-Key` 必带**，缺失直接 400。它是这个接口唯一的重放保护：同一个 key 的重试会拿回同一次的结果，不会给同一位玩家铸出两个都能用的 token。**同一次启动的超时重试用同一个 key；每一次新的启动（哪怕是同一位玩家再开一局）用一个新 key**——复用 key 会拿回上一次已经被兑换掉的 token。
+
+调用约束：
+
+- **重试的请求体必须逐字节一致**：同一个 `Idempotency-Key` 配了不同的请求体（哪怕只差空格或字段顺序）回 409 `IDEMPOTENCY_KEY_MISMATCH`。签名头则**每次重新生成**：新的 `X-Timestamp`、新的 `X-Nonce`——沿用上一次的 Nonce 会被判重放（`PARTNER_NONCE_REPLAY`）
+- 命中重放时响应头带 `X-Hashrace-Idempotent-Replay: true`，body 与首次成功的那次相同。只有 2xx 会被记下；首次失败的请求可以用同一个 key 重试。记录保留 24 小时
+- 请求体上限 **8 KiB**（8192 字节），超过回 413 `PARTNER_BODY_TOO_LARGE`
+- 出口 IP 必须在你登记的白名单内；**白名单为空 = 全部拒绝**，不是「不限制」
+- 限流是两道令牌桶：先按来源 IP（容量 1000、每秒补 250），验签通过后再按你的 Partner（容量 200、每秒补 50）。超出回 429 `RATE_LIMITED`，带 `Retry-After` 响应头（秒）
 
 请求体把业务字段包在 `data` 里：
 
@@ -172,18 +202,28 @@ Idempotency-Key: <每次启动一个新的 UUID>
 <!-- parity:launch-reasons -->
 | `reason` | HTTP | 含义 | 你应做 |
 |---|---|---|---|
-| `PARTNER_SIGNATURE_REQUIRED` | 401 | 签名头缺失或格式不对 | 检查 4 个签名头 |
-| `PARTNER_TIMESTAMP_INVALID` | 401 | 时间戳不可解析或偏差超过 300 秒 | 校准服务器时钟 |
-| `PARTNER_SIGNATURE_INVALID` | 401 | 签名不匹配或 API Key 无效 | 对照 §2 金标向量排查 |
-| `PARTNER_NONCE_REPLAY` | 401 | 630 秒内重复使用了同一个 Nonce | 每个请求生成新 Nonce |
-| `PARTNER_SUSPENDED` | 401 | 你的 Partner 当前处于暂停状态 | 联系 Hashrace 商务 |
-| `PARTNER_IP_NOT_ALLOWED` | 403 | 出口 IP 不在白名单内 | 在 Operator Portal 登记出口 IP |
+| `PARTNER_SIGNATURE_REQUIRED` | 401 | 签名头缺失，或 Key / Nonce / Signature 的长度、字符集不合规 | 检查 4 个签名头 |
+| `PARTNER_TIMESTAMP_INVALID` | 401 | `X-Timestamp` 不是整数 Unix 秒（如 ISO 时间串），或与 Hashrace 时间偏差超过 300 秒（毫秒时间戳落在这里） | 按整数秒发送并校准服务器时钟 |
+| `PARTNER_SIGNATURE_INVALID` | 401 | 签名不匹配，或 API Key 不存在 / 已吊销 | 对照 §2 金标向量排查 |
+| `PARTNER_NONCE_REPLAY` | 401 | 630 秒内重复使用了同一个 Nonce | 每个请求生成新 Nonce（重试也要换） |
+| `PARTNER_SUSPENDED` | 401 | 你的 Partner 不在生效状态（待开通、暂停、已终止），或你的签约主体被暂停。只在签名验证通过之后才返回 | 联系 Hashrace 商务 |
+| `PARTNER_BODY_TOO_LARGE` | 413 | 请求体超过 8 KiB | 缩小 `extra_params` 等字段后重发 |
+| `PARTNER_BODY_READ_FAILED` | 401 | 请求体没有读完整（连接中途断开等） | 用同一个 `Idempotency-Key` 重试 |
+| `PARTNER_IP_NOT_ALLOWED` | 403 | 出口 IP 不在白名单内（白名单为空时一律如此） | 在 Operator Portal 登记出口 IP |
+| `PARTNER_NONCE_CHECK_UNAVAILABLE` | 503 | Hashrace 侧重放校验暂不可用，请求未处理 | 稍后用同一个 `Idempotency-Key`、新的 Nonce 重试 |
+| `RATE_LIMITER_UNAVAILABLE` | 503 | Hashrace 侧限流服务暂不可用，请求未处理 | 按 `Retry-After`（1 秒）重试 |
+| `UNAVAILABLE` | 503 | Hashrace 侧凭证服务或下游暂不可用 | 退避后用同一个 `Idempotency-Key` 重试 |
+| `IDEMPOTENCY_CACHE_UNAVAILABLE` | 503 | Hashrace 侧幂等存储暂不可用，请求未处理 | 退避后用同一个 `Idempotency-Key` 重试 |
 | `IDEMPOTENCY_KEY_REQUIRED` | 400 | 没带 `Idempotency-Key` | 补上请求头 |
-| `IDEMPOTENCY_KEY_MISMATCH` | 409 | 同一个 `Idempotency-Key` 配了不同的请求体 | 新的启动换新 key |
+| `IDEMPOTENCY_KEY_MISMATCH` | 409 | 同一个 `Idempotency-Key` 配了不同的请求体 | 重试用逐字节相同的请求体；新的启动换新 key |
 | `IDEMPOTENCY_REQUEST_IN_FLIGHT` | 409 | 同一个 key 的上一次请求还在处理 | 稍后用同一个 key 重试 |
-| `INVALID_PARAMS` | 400 | 字段非法：`external_player_id` 为空 / 过长、币种格式不对 | 按 `trace_id` 与 message 修正参数 |
+| `INVALID_PARAMS` | 400 | 字段非法：`external_player_id` 为空 / 过长、币种格式不对；请求体不是合法 JSON 或字段类型不对；缺 `data`，或 `data.partner_id` 与 API Key 所属 Partner 不一致 | 按 `trace_id` 与 message 修正参数 |
 | `OPERATOR_CURRENCY_NOT_ACTIVE` | 400 | `currency` 不在你的可用币种里 | 换币种，或在 Portal 申请开通 |
-| `RATE_LIMITED` | 429 | 调用频率超出配额 | 退避后重试（重试沿用同一个 `Idempotency-Key`） |
+| `OPERATOR_LAUNCH_TOKEN_COLLISION` | 409 | 新签发的 token 与现存的撞了（概率可忽略） | 直接重试即可（失败不会被记下） |
+| `NOT_FOUND` | 404 | 请求路径不对 | 检查是否为 `/api/v1/partner/launch-session` |
+| `RATE_LIMITED` | 429 | 调用频率超出配额（见上文限流） | 按 `Retry-After` 退避后重试（沿用同一个 `Idempotency-Key`） |
+| `TIMEOUT` | 504 | Hashrace 内部处理超时 | 用同一个 `Idempotency-Key` 重试 |
+| `INTERNAL_ERROR` | 500 | Hashrace 内部错误 | 带 `trace_id` 联系 Hashrace；可用同一个 `Idempotency-Key` 重试 |
 
 ---
 
@@ -254,9 +294,9 @@ const { client } = embedHashraceIframe({
 <!-- parity:pm-up -->
 | 事件 | payload | 需应答 | 说明 |
 |---|---|---|---|
-| `iframe.ready` | `{ client_version, protocol_version }` | 否 | 游戏加载完成，可隐藏你的 loading。`protocol_version` 恒为 `"hashrace.v1"`，用于特性检测 |
-| `iframe.exit_request` | `{ reason }` | 否（回执可选） | 玩家请求退出。`reason` 取值 `user_back`（玩家点了返回）/ `session_expired`（会话已过期）。请关闭 iframe 或回到大厅。游戏发出后不等回执：回不回、回什么都不改变游戏的行为 |
-| `iframe.retry_request` | `{}` | 否 | 游戏内的会话已无法恢复（如维护后重试）。请**重新调 launch-session**，用新链接重新加载 iframe——旧链接的 token 已被兑换 |
+| `iframe.ready` | `{ client_version, protocol_version }` | 否 | 玩家登录成功、游戏即将显示首帧时发一次，可隐藏你的 loading。登录被拦下（维护、版本不符、启动链接失效等）时**不发**——游戏会自己显示拦截画面。请给 loading 设一个超时（如 30 秒），到时没收到就撤掉 loading、露出 iframe 内的画面或你的重试入口。`protocol_version` 恒为 `"hashrace.v1"`，用于特性检测 |
+| `iframe.exit_request` | `{ reason }` | 否（回执可选） | 玩家请求退出。`reason` 取值 `user_back`（玩家主动退出 / 登出，如游戏内「退出」，退出流程结束时立即发出）/ `session_expired`（会话被吊销或被服务端踢下线后，玩家在下线提示上点「返回」时发出；弹提示时不发）。请关闭 iframe 或回到大厅。游戏发出后不等回执：回不回、回什么都不改变游戏的行为 |
+| `iframe.retry_request` | `{}` | 否 | 玩家点了「重试」，而游戏内的会话已无法恢复：登录被维护拦下后重试、维护拖过了会话有效期、因平台内部原因或维护被下线、被服务端踢下线（如异地登录）。请**重新调 launch-session**，用新链接重新加载 iframe——旧链接的 token 已被兑换 |
 | `iframe.support_request` | `{}` | 否 | 玩家点了「联系客服」。请打开你的客服入口 |
 | `iframe.game_ended` | `{ game_id }` | 否 | 玩家离开了游戏。请关闭 iframe 或回到你的游戏列表 |
 | `iframe.size_change` | `{ width, height }` | 否 | 游戏期望的容器尺寸（CSS px）。**游戏客户端尚未发送此事件** |
@@ -264,7 +304,7 @@ const { client } = embedHashraceIframe({
 | `iframe.round_end` | `{ round_id, game_code, net_change_micro, currency, ended_at }` | 否 | 一局结束。**游戏客户端尚未发送此事件**，字段见下 |
 | `iframe.error` | `{ code, trace_id?, message }` | 否 | 游戏内部错误通知，未知 `code` 请原样记录。**游戏客户端尚未发送此事件** |
 
-标注「尚未发送」的事件协议已定，你可以先实现接收侧，但现阶段不会收到，不要依赖它们（例如不要靠 `iframe.round_end` 刷新余额）。
+标注「尚未发送」的事件协议已定，你可以先实现接收侧，但现阶段不会收到，不要依赖它们（例如不要靠 `iframe.round_end` 刷新余额）。余额的每一次变动都先经 Seamless Wallet Webhook 到达你的后端——页面上的余额展示请由你的后端推送，或在玩家离开游戏（`iframe.game_ended` / `iframe.exit_request`）时刷新。
 
 `iframe.round_end` 字段：
 
@@ -345,6 +385,7 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 
 - 成功一律 HTTP 200 + 业务字段；**不允许**用 HTTP 200 + `error_code` 表达错误。
 - 错误一律用 [§8](#8-错误码) 的错误体（`application/json`），**不要**返回 `application/problem+json`。
+- 请求头 `User-Agent: Hashrace-Wallet/<版本>`（接入验证的测试请求为 `Hashrace-Wallet-Test`），可用于你的 WAF / 访问日志识别。
 - 请在 **3 秒**内完成响应（含建连与读完请求）。超过 3 秒 Hashrace 按超时处理，见 [§7.3](#73-超时与重投)。目标 P99 ≤ 1.5 秒。
 
 ### 6.1 金额
@@ -364,7 +405,20 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 
 ### 6.2 `ref_id`
 
-`ref_id` 是一笔资金操作的幂等键，由 Hashrace 生成，形如 `1001:mines:roll:6f1c…`。请把它**整串**当作不可变字符串持久化，不要截取或解析。同一个 `ref_id` 的所有请求只能对应一笔账（见 [§7](#7-幂等与重试)）。
+`ref_id` 是一笔资金操作的幂等键，由 Hashrace 生成。请把它**整串**当作不可变字符串持久化，不要截取或解析——新的游戏品类会带来新的形态。同一个 `ref_id` 的所有请求只能对应一笔账（见 [§7](#7-幂等与重试)）。
+
+当前的形态（`{partner}` 为你的 Partner ID，`{currency}` 为本笔币种）：
+
+| 场景 | `ref_id` | 出现在 |
+|---|---|---|
+| 即时 / 电子游戏下注 | `{partner}:{currency}:{game}:{round}:bet` | debit |
+| 即时 / 电子游戏派彩 | `{partner}:{currency}:{game}:{round}:win` | credit（输局也可能发一笔 0 额 credit，用来带回有效投注与净盈亏） |
+| 局作废后补付净赢 | `<原派彩 ref_id>:topup` | credit（见 §6.6「局作废」） |
+| 牌桌买入 / 补码（尚未上线） | `{partner}:{currency}:poker:{session}:sit_down` / `{partner}:{currency}:poker:{session}:rebuy:{key}` | debit |
+| 牌桌离桌结算（尚未上线） | `{partner}:{currency}:poker:{session}:settle` | credit（玩家离桌、系统强制离桌、崩溃兜底退回共用这一个键） |
+| 赌场类每轮每人（尚未上线） | `{partner}:{currency}:casino:{game}:{table}:{round}:{player}:bet` / `…:win` | debit / credit；各段里的 `%` 与 `:` 转义为 `%25` / `%3A` |
+
+冲正（`/wallet/cancel`）不带自己的 `ref_id`，只带被冲正交易的 `original_ref_id`，幂等键就是它；Hashrace 内部以 `<original_ref_id>:cancel` 标识这次冲正，这个串不会发给你。
 
 ### 6.3 `POST /wallet/balance`
 
@@ -397,8 +451,8 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 | `ref_id` | string | 是 | 幂等键 |
 | `game_code` | string | 否 | 游戏编码，便于你的报表 |
 | `round_id` | string | 否 | 局标识 |
-| `type` | string | 是 | 业务类型，如 `bet` / `rebuy` / `tournament_entry` |
-| `reason` | string | 否 | 人类可读说明，供报表 / 客服 |
+| `type` | string | 是 | 业务类型：`bet`（下注）、`sit_down` / `rebuy`（牌桌买入 / 补码，尚未上线）、`entry_fee`（锦标赛报名，尚未上线） |
+| `reason` | string | 否 | 供报表 / 客服的说明，如 `mines_bet` / `hilo_bet` / `slot_spin` |
 
 <!-- parity:webhook:DebitResp -->
 | 响应字段 | 类型 | 必选 | 说明 |
@@ -414,7 +468,7 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 
 ```json
 // 请求
-{"player_id":"alice_001","amount":10000000,"real_amount":"10.00","currency":"USD","wallet_type":"C","ref_id":"1001:mines:roll:abc123","game_code":"mines","type":"bet"}
+{"player_id":"alice_001","amount":10000000,"real_amount":"10.00","currency":"USD","wallet_type":"C","ref_id":"1001:USD:mines:r-abc123:bet","game_code":"mines","round_id":"r-abc123","type":"bet","reason":"mines_bet"}
 // 200 响应
 {"new_balance":{"amount":40000000,"real_amount":"40.00","currency":"USD","wallet_type":"C"},"partner_txn_id":"ptn_tx_8e9d2a","completed_at":1731042000}
 ```
@@ -434,18 +488,25 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 | `ref_id` | string | 是 | 幂等键 |
 | `game_code` | string | 否 | 游戏编码 |
 | `round_id` | string | 否 | 局标识 |
-| `type` | string | 是 | 如 `win` / `bonus` / `refund` / `tournament_prize` |
+| `type` | string | 是 | `win`（派彩）、`refund`（退还）、`stand_up` / `emergency_refund`（牌桌离桌结算 / 崩溃兜底退回，尚未上线）、`prize`（锦标赛奖金，尚未上线） |
 | `reason` | string | 否 | 见下表 |
 | `valid_bet_delta` | int64 | 否 | 本笔对应的有效投注增量（微元） |
 | `net_profit` | int64 | 否 | 本笔对应的玩家净盈亏（微元，可负） |
 
-`reason` 区分这笔钱是玩家主动拿的，还是平台替他结的——金额口径相同，只是归因不同，建议你的财务与客服分开统计：
+`reason` 区分这笔钱是玩家主动拿的，还是平台替他结的——金额口径相同，只是归因不同，建议你的财务与客服分开统计。「玩家主动兑现」与「平台强制结算」这两类取值稳定、不合并：
 
 | `reason` | 含义 |
 |---|---|
-| `{game}_cashout`（如 `hilo_cashout`） | 玩家主动结算 |
-| `force_settle_cashout` | 平台强制结算（房间排空、维护、局超时等），按派彩处理 |
-| `force_settle_refund` | 平台强制结算，该局无结果，按退还处理 |
+| `{game}_cashout`（`mines_cashout` / `hilo_cashout`） | 玩家主动兑现 |
+| `mines_max_win_cap` / `hilo_max_win_auto_cashout` | 本局达到单局最高派彩，自动结算 |
+| `mines_all_gems_revealed` | 翻完全部安全格，自动结算 |
+| `mines_busted` | 踩雷输局，0 额，只带回有效投注与净盈亏 |
+| `slot_win` | 电子游戏一次旋转的派彩 |
+| `force_settle_cashout` | 平台强制结算（房间排空、维护、局超时、长时间无操作、断线等），按派彩处理 |
+| `emergency_kickout_settle` | 平台应急下线玩家时按当前倍率结算 |
+| `bet_reversed_topup` | 局作废后核对确认这一局已结算，补付净赢（`ref_id` 为 `<原派彩 ref_id>:topup`，见 §6.6） |
+
+牌桌类（尚未上线）的离桌结算 `reason` 为空，崩溃兜底退回为 `pod_crash`。`reason` 只用于归类、不参与幂等判定；将来会新增取值，遇到不认识的请原样记录。
 
 **派彩不应被业务拒绝**：credit 返回 4xx 业务错误（幂等冲突、限流 / 维护除外）会让这笔派彩停在人工处理队列，玩家在你那边看不到这笔钱。credit 永远不应返回 `INSUFFICIENT_BALANCE`。
 
@@ -459,7 +520,7 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 | `player_id` | string | 是 | 玩家 ID |
 | `wallet_type` | string | 是 | `"C"` |
 | `original_ref_id` | string | 是 | 被冲正交易的 `ref_id` |
-| `reason` | string | 否 | 冲正原因，如 `emergency_refund` / `manual_cancel` / `round_lost_unsettled`（见下「局作废」） |
+| `reason` | string | 否 | 冲正原因，见下表 |
 
 <!-- parity:webhook:CancelResp -->
 | 响应字段 | 类型 | 必选 | 说明 |
@@ -478,11 +539,29 @@ Hashrace 服务端调用你的 5 个钱包端点。全部是 `POST`、`Content-T
 - **没见过的 `original_ref_id` 必须返回 200 空冲正**：`reverted_amount = 0`、`reverted_real_amount = "0"`、`new_balance` 为当前余额、照常回填 `partner_txn_id`。**不要返回 4xx**。原因：Hashrace 可能在扣款请求到达你之前就已决定冲正（那笔扣款在你这边根本没发生过），此时冲正什么都不应改变。重复收到同一个未知单号的冲正同样返回 200 空冲正。接入验证的必跑用例专门检查这一条。
 - `NOT_CANCELLABLE` 只用于「这笔交易**存在**但不可冲正」：已最终结算、已冲正过，或它本身就是一笔冲正。
 
-**局作废（`reason = round_lost_unsettled`）**：玩家下注扣款之后、这一局结算之前，承载它的游戏服务器没了（崩溃 / 被强制终止）。这一局不会被恢复或结算：Hashrace 在冲正期限（下注后约 1 小时；多步玩法从玩家最后一次局内操作起算）到点后对那笔 debit 发 `/wallet/cancel`，全额退回本金。请把它当作**这一局作废**处理：
+`reason` 取值（与 credit 一样只用于归类，将来会新增，不认识的请原样记录）：
 
-- 冲正之后这一局迟到的派彩会被 Hashrace 拦下、不按原额发给你，转人工核对；只有核对确认这一局其实已经结算过时，才补付净赢（派彩 − 已退本金），用独立的 `ref_id`（`<原派彩 ref_id>:topup`）
+| `reason` | 含义 |
+|---|---|
+| `force_settle_refund` | 平台强制结算、该局没有结果，退回本金 |
+| `emergency_kickout_refund` | 平台应急下线玩家，这一局不结算、退回本金 |
+| `{game}_bet_rollback`（`mines_bet_rollback` / `hilo_bet_rollback`） | 扣款成功后开局失败，撤回这笔扣款 |
+| `round_lost_unsettled` | 局作废（见下） |
+| `round voided` | 运营作废了一局已结算的局，逐笔冲正它的下注与派彩 |
+| `reconcile: debit outcome was unknown, partner confirmed charged` | 扣款超时后经 `/wallet/query-txn` 确认你其实扣了，冲正这笔（见 §7.3） |
+
+**局作废（`reason = round_lost_unsettled`）**：玩家下注扣款之后、这一局结算之前，承载它的游戏服务器没了（崩溃 / 被强制终止）。这一局不会被恢复或结算，Hashrace 对那笔 debit 发 `/wallet/cancel`，全额退回本金。什么时候发：
+
+- Hashrace 确认那台服务器已崩溃时，约 **10 分钟**后冲正。前提是崩溃之后别的局仍在正常结算、派彩（说明没有这一局的结算还在路上）；低流量时段拿不到这个证据时退回常规时点
+- 常规时点：下注后约 **1 小时**（多步玩法从玩家最后一次局内操作起算）
+
+请把它当作**这一局作废**处理：
+
 - Hashrace 的局记录里这一局是**作废局**（投注额如实记录、派彩 0、不计有效投注，不进 GGR / 分成）；随后局记录上会带上这一局公开的服务端种子，玩家与你都能按公平性说明校验
-- 玩家回到这个游戏时会看到「上一局因服务故障作废，本金已退回」的提示；余额以你这边钱包为准
+- 冲正之后这一局迟到的派彩会被 Hashrace 拦下、不按原额发给你，转人工核对。核对的结论会改写这一局，并体现在你的月结里：
+  - 确认这一局其实已经结算过：补付净赢（派彩 − 已退本金，大于 0 时才发），用独立的 `ref_id`（`<原派彩 ref_id>:topup`，`reason = bet_reversed_topup`）；局记录改写为已结算，投注额 = 本金、派彩 = 原派彩额
+  - 线下对账确认你收下了这笔本金（冲正没有送达、且已放弃重投）：局记录改写为已结算局，本金计入 GGR、参与分成，不可撤销
+- 游戏内向玩家提示「上一局因服务故障作废，本金已退回」**尚未上线**（客户端待协议升级）；目前玩家回到游戏只会看到余额变化，余额以你这边钱包为准
 
 ### 6.7 `POST /wallet/query-txn`
 
@@ -518,7 +597,7 @@ Hashrace 在扣款结果未知（超时）时用它确认你那边到底有没�
 | 同一 `ref_id` 重发 | 返回**首次结果**：HTTP 200 + 与首次相同的 `partner_txn_id` / `new_balance` / `completed_at`（cancel 同时包括 `reverted_amount`）。请持久化首次响应的这些字段 |
 | 同一 `ref_id`、参数不同 | 返回 HTTP 409 `IDEMPOTENT_CONFLICT`（金额、币种、玩家任一不同） |
 | **同一 `ref_id` 的并发请求** | 同一个 `ref_id` 的多个请求**同时在处理**时，也必须**只入账一次**：一个按首次处理，其余按重发返回首次结果（或 `IDEMPOTENT_CONFLICT`）。「先查有没有记录、没有再写」两步之间不加锁是典型错法——并发的两个请求会同时判定为首次、各记一次账。判重与记账必须在同一个原子单元里完成（唯一索引 + 同一事务写流水、行锁，或按 `ref_id` 串行处理） |
-| 唯一性范围 | 按 `(你的 API Key, ref_id)` 唯一即可（`ref_id` 里已编码 Partner） |
+| 唯一性范围 | 按 `ref_id` 全局唯一即可（`ref_id` 里已编码你的 Partner ID 与币种）。**唯一键不要带 API Key**：同一个 Partner 可以同时有多把生效的 Key，Key 轮换之后，重投旧 `ref_id` 用的可能是新 Key，带 Key 的唯一键会把它当成新的一笔 |
 
 为什么并发会发生：Hashrace 自己不会对同一个 `ref_id` 同时发两次请求，但一次请求超时之后的重投，可能在你那边仍在处理上一次时到达。
 
@@ -528,9 +607,11 @@ Hashrace 在扣款结果未知（超时）时用它确认你那边到底有没�
 |---|---|
 | 200 | 成功。重投拿到的 200 若与首次结果不一致（`partner_txn_id` / `completed_at` / `new_balance.amount`），Hashrace 告警排查 |
 | 409 `IDEMPOTENT_CONFLICT` | 不重试，人工排查 |
-| 429 `RATE_LIMITED`、503 `SERVER_MAINTENANCE` / `SERVICE_UNAVAILABLE` | 视为「你没处理这笔、钱没动」，稍后用**同一个 `ref_id`** 重投 |
+| 429 `RATE_LIMITED`、503 `SERVER_MAINTENANCE` / `SERVICE_UNAVAILABLE` | credit / cancel：视为「你没处理这笔、钱没动」，按 §7.3 的退避用**同一个 `ref_id`** 重投。debit：429 → 本次下注对玩家返回「钱包暂不可用」，不重投、不对账；503 → 与其他 5xx 相同（见 §7.3） |
 | 5xx / 超时 / 连接失败 | credit / cancel 用同一个 `ref_id` 重投；debit 见下节 |
 | 其他 4xx 业务错误 | debit：本次下注失败，玩家看到对应提示；credit / cancel：停止自动重投，转人工处理 |
+
+重投间隔只按 §7.3 的退避表走：Hashrace **不读取**错误体里的 `retry_after_ms`，也不读取 `Retry-After` 响应头。
 
 ### 7.3 超时与重投
 
@@ -565,7 +646,7 @@ Hashrace 在扣款结果未知（超时）时用它确认你那边到底有没�
 | `error_code` | string | 是 | 下表之一 |
 | `message` | string | 否 | 人类可读说明，便于双方排查 |
 | `trace_id` | string | 否 | 你这边的链路 ID（W3C traceparent 或自定义） |
-| `retry_after_ms` | int64 | 否 | 仅 5xx 时可选，建议 Hashrace 的退避毫秒数 |
+| `retry_after_ms` | int64 | 否 | 仅 5xx 时可选。Hashrace 目前不读取它（也不读 `Retry-After` 头），重投按 §7.3 的退避表 |
 
 ### 8.2 `error_code`
 

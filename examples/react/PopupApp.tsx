@@ -27,7 +27,7 @@ export function PopupApp({ launchUrl }: { launchUrl: string }) {
 
         handle.on('iframe.round_end', ({ net_change_micro, currency, round_id }) => {
             console.log(`round ${round_id} net=${net_change_micro} micro ${currency}`);
-            // 此处可触发 Partner 自家钱包余额刷新 UI
+            // 游戏客户端尚未发送此事件，余额刷新不要挂在这里：改在 iframe.game_ended / iframe.exit_request 时刷新
         });
         handle.on('iframe.exit_request', (_, ack) => ack({ accepted: true }));
         handle.onClosed(() => {

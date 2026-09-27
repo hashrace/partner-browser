@@ -42,20 +42,25 @@ const { client } = embedHashraceIframe({
     container: document.getElementById('game')!,
 });
 
-client.on('iframe.round_end', ({ round_id }) => {
-    // The net change has already been applied to your wallet via the Seamless
-    // Webhook S2S channel. You only need to refresh the balance UI here.
+// Every balance change reaches your backend first, through the Seamless Wallet
+// webhooks. Push balance updates from your backend, or refresh the balance UI
+// when the player leaves the game:
+client.on('iframe.game_ended', () => {
+    refreshBalanceUi();
+    // Then tear down the iframe or navigate back to your game list.
 });
 
 client.on('iframe.exit_request', (_, ack) => {
     ack({ accepted: true }); // optional reply — the iframe does not wait for it
+    refreshBalanceUi();
     // Then tear down the iframe or navigate back to your lobby.
 });
 ```
 
-> **Note:** `iframe.round_end` (and `iframe.round_start` / `iframe.size_change` /
-> `iframe.error`) are defined in the protocol but **not yet emitted** by the game
-> client. See the [Events](#events) table for what is currently sent.
+> **Note:** do not refresh the balance on `iframe.round_end`: it (and
+> `iframe.round_start` / `iframe.size_change` / `iframe.error`) is defined in the
+> protocol but **not yet emitted** by the game client. See the [Events](#events)
+> table for what is currently sent.
 
 ### Manual (you already have the iframe element)
 
@@ -87,10 +92,11 @@ document.getElementById('play')!.addEventListener('click', () => {
     });
     if (!handle) return;
 
-    handle.on('iframe.round_end', () => {
-        // refresh balance UI
+    handle.on('iframe.game_ended', () => refreshBalanceUi());
+    handle.on('iframe.exit_request', (_, ack) => {
+        ack({ accepted: true });
+        refreshBalanceUi();
     });
-    handle.on('iframe.exit_request', (_, ack) => ack({ accepted: true }));
     handle.onClosed(() => navigateBackToLobby());
 });
 ```
@@ -199,8 +205,11 @@ names (`FORBIDDEN_DOWN_EVENTS`) get a dedicated error message.
 | 0.x / 1.x | `hashrace.v1` |
 | 2.x | `hashrace.v2` (90-day overlap window with v1) |
 
-During 0.x, breaking changes may land in minor releases — pin to `~0.2.x` for
-stability or use `^0.2.0` to receive patch updates only.
+The SDK is installed from a git tag (see [Install](#install)), so npm semver
+ranges such as `~0.2.x` / `^0.2.0` do not apply — you always get exactly the tag
+you pin. To upgrade, change the tag and read [`CHANGELOG.md`](./CHANGELOG.md)
+first: during 0.x, a minor tag (`v0.2.x` → `v0.3.0`) may contain breaking changes,
+while a patch tag (`v0.2.0` → `v0.2.1`) does not.
 
 ## Compatibility
 
