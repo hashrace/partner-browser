@@ -19,7 +19,8 @@ export interface PartnerClientOptions {
      * 期望的 iframe 侧 origin，即启动链接的 origin（`https://{Hashrace 游戏域名}`）。
      * 游戏域名开通时由 Hashrace 告知、按环境不同，所以没有默认值——猜一个默认域名，
      * 猜错时所有消息被静默当成钓鱼丢弃。embed / popup 两个入口从 launchUrl 自动取。
-     * 支持数组以适配多环境（staging/prod）；send() 发消息时用数组首元素作 targetOrigin。
+     * 支持数组以适配多环境（staging/prod）。发消息时 targetOrigin 取最近一次通过校验的
+     * 上行消息的 origin；还没收到过时取 iframe.src 的 origin（须在白名单内），再退到数组首元素。
      */
     expectedChildOrigin: string | readonly string[];
     /**
@@ -73,7 +74,9 @@ export interface PartnerClient {
  *
  * 发送路径：
  *   - 不在 DownEventMap 白名单内的事件抛错（禁止事件给出专门的报错）
- *   - postMessage targetOrigin 严格使用 expected（数组取首元素），不使用 "*"
+ *   - postMessage targetOrigin 取已通过 origin 校验的那个 origin（回执用触发它的那条消息的
+ *     `e.origin`），不使用 "*"——数组配置下固定取首元素，iframe 实际在另一环境时回执与
+ *     下行消息会被浏览器按 origin 不符静默丢弃
  */
 export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
     const expected = opts.expectedChildOrigin;
@@ -83,14 +86,19 @@ export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
     const handlers = new Map<string, UpHandler<UpEventName>>();
     const onViolation = opts.onSecurityViolation ?? (() => { /* no-op */ });
 
-    // 计算 postMessage 的 targetOrigin：若配置为数组取首元素（staging/prod 二选一），
-    // 否则直接使用字符串。绝不使用 "*" 以避免向任意 origin 泄漏消息。
-    const targetOrigin: string = (() => {
-        if (Array.isArray(expected)) {
-            return expected[0] as string;
+    // 最近一次通过 origin 校验的上行消息的 origin。绝不使用 "*"：只往白名单内、
+    // 且确实是 iframe 当前所在的 origin 发。
+    let verifiedOrigin: string | undefined;
+    const sendTarget = (): string => {
+        if (verifiedOrigin) return verifiedOrigin;
+        try {
+            const src = new URL(opts.iframe.src).origin;
+            if (isExpectedOrigin(src, expected)) return src;
+        } catch {
+            // iframe.src 为空或不是绝对 URL：退到配置
         }
-        return expected as string;
-    })();
+        return (Array.isArray(expected) ? expected[0] : expected) as string;
+    };
 
     const onMessage = (e: MessageEvent): void => {
         // 1. source 必须是本 client 绑定的 iframe 的 contentWindow
@@ -108,6 +116,9 @@ export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
         // 3. channel 校验，避免与其他库共用 postMessage 时串包
         if (data.channel !== CHANNEL) return;
 
+        const replyOrigin = e.origin;
+        verifiedOrigin = replyOrigin;
+
         const h = handlers.get(data.event);
         if (!h) return;
 
@@ -122,7 +133,7 @@ export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
                         payload: ackPayload,
                         nonce: data.nonce,
                     },
-                    targetOrigin,
+                    replyOrigin,
                 );
             }
             : undefined;
@@ -152,7 +163,7 @@ export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
                     payload,
                     nonce: crypto.randomUUID(),
                 },
-                targetOrigin,
+                sendTarget(),
             );
         },
         dispose() {

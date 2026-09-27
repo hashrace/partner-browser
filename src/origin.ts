@@ -6,7 +6,9 @@
  * 拒绝 null/undefined、拒绝字面 "null"（浏览器对 data: / file: 等不透明来源返回此值）。
  *
  * 不支持通配符——父页面一侧的 allowlist 通常就一两个确定 origin（prod / staging）。
- * iframe 侧（游戏客户端）对父页 origin 的通配符匹配在客户端内部处理，与本函数无关。
+ * iframe 侧（游戏客户端）不做任何白名单或通配符匹配：它把嵌入方 origin 取为
+ * `location.ancestorOrigins[0]`（取不到再用 `document.referrer` 的 origin），出站只发给它、
+ * 进站只收它的，都取不到就不发。与本函数无关。
  */
 export function isExpectedOrigin(
     actual: string | undefined,

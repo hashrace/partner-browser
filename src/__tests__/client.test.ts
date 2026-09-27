@@ -131,6 +131,42 @@ describe('createPartnerClient', () => {
         expect(target).toBe('https://app.hashrace.com');
     });
 
+    // 守的回归：多环境数组配置下 ack / send 曾固定发往 expected[0]，iframe 实际在
+    // staging 时浏览器按 origin 不符把回执与下行消息静默丢弃。
+    it('ack and later send go to the origin that passed verification', () => {
+        const iframe = makeIframe();
+        const post = vi.fn();
+        Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: post }, writable: true });
+        const client = createPartnerClient({
+            iframe,
+            expectedChildOrigin: ['https://app.hashrace.com', 'https://app-staging.hashrace.com'],
+        });
+        client.on('iframe.exit_request', (_p, ack) => ack!({ accepted: true }));
+
+        window.dispatchEvent(new MessageEvent('message', {
+            data: { channel: 'hashrace.v1', event: 'iframe.exit_request', payload: { reason: 'user_back' }, nonce: 'N2' },
+            origin: 'https://app-staging.hashrace.com',
+            source: iframe.contentWindow as unknown as Window,
+        }));
+        expect(post.mock.calls[0][1]).toBe('https://app-staging.hashrace.com');
+
+        client.send('parent.pause', {});
+        expect(post.mock.calls[1][1]).toBe('https://app-staging.hashrace.com');
+    });
+
+    it('send before any message uses iframe.src origin when it is in the allowlist', () => {
+        const iframe = makeIframe();
+        iframe.src = 'https://app-staging.hashrace.com/launch?t=1';
+        const post = vi.fn();
+        Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: post }, writable: true });
+        const client = createPartnerClient({
+            iframe,
+            expectedChildOrigin: ['https://app.hashrace.com', 'https://app-staging.hashrace.com'],
+        });
+        client.send('parent.pause', {});
+        expect(post.mock.calls[0][1]).toBe('https://app-staging.hashrace.com');
+    });
+
     it('send picks first origin from array as target', () => {
         const iframe = makeIframe();
         const post = vi.fn();
