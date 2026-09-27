@@ -131,6 +131,26 @@ describe('createPartnerClient', () => {
         expect(target).toBe('https://app.hashrace.com');
     });
 
+    // 守的回归：send() 曾直接调 crypto.randomUUID()——它只在安全上下文里存在，Partner 在 http
+    // 测试环境或旧 WebView 里嵌入时 send 抛 TypeError，下行消息发不出去（popup 那条路早有兜底）。
+    it('send works without crypto.randomUUID (non-secure context)', () => {
+        const iframe = makeIframe();
+        const post = vi.fn();
+        Object.defineProperty(iframe, 'contentWindow', { value: { postMessage: post }, writable: true });
+        const client = createPartnerClient({ iframe, expectedChildOrigin: 'https://app.hashrace.com' });
+        const orig = crypto.randomUUID;
+        Object.defineProperty(crypto, 'randomUUID', { value: undefined, configurable: true, writable: true });
+        try {
+            expect(() => client.send('parent.resize', { width: 1, height: 1 })).not.toThrow();
+            expect(post).toHaveBeenCalledOnce();
+            const [envelope] = post.mock.calls[0];
+            expect(typeof envelope.nonce).toBe('string');
+            expect(envelope.nonce.length).toBeGreaterThan(0);
+        } finally {
+            Object.defineProperty(crypto, 'randomUUID', { value: orig, configurable: true, writable: true });
+        }
+    });
+
     // 守的回归：多环境数组配置下 ack / send 曾固定发往 expected[0]，iframe 实际在
     // staging 时浏览器按 origin 不符把回执与下行消息静默丢弃。
     it('ack and later send go to the origin that passed verification', () => {

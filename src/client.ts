@@ -7,6 +7,7 @@ import {
     UpEventName,
     assertSendableDownEvent,
 } from './events';
+import { makeNonce } from './nonce';
 import { isExpectedOrigin } from './origin';
 
 /**
@@ -161,7 +162,7 @@ export function createPartnerClient(opts: PartnerClientOptions): PartnerClient {
                     channel: CHANNEL,
                     event,
                     payload,
-                    nonce: crypto.randomUUID(),
+                    nonce: makeNonce(),
                 },
                 sendTarget(),
             );

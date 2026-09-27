@@ -8,6 +8,7 @@ import {
     assertSendableDownEvent,
 } from './events';
 import type { AckSender, UpHandler } from './client';
+import { makeNonce } from './nonce';
 
 /**
  * embedHashraceIframe / launchInPopup 默认的 iframe `allow` 属性。
@@ -213,13 +214,6 @@ function mountWrapper(doc: Document, params: {
     const script = doc.createElement('script');
     script.textContent = buildRelayScript(params);
     doc.body.appendChild(script);
-}
-
-function makeNonce(): string {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-        return crypto.randomUUID();
-    }
-    return 'r' + Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 /**

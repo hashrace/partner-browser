@@ -47,6 +47,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - README marks which upstream events the game client does not emit yet, and that
   the iframe does not consume downstream events yet.
 
+### Fixed
+
+- `PartnerClient.send()` no longer throws in non-secure contexts (plain `http`
+  test pages, older WebViews) where `crypto.randomUUID` is undefined. It falls
+  back to a random string, same as `PopupHandle.send()` already did.
+
 ## 0.2.0
 
 ### Added
