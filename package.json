@@ -1,6 +1,6 @@
 {
   "name": "@hashrace/partner-browser",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Browser-side postMessage SDK for embedding Hashrace games in Partner websites (hashrace.v1 protocol).",
   "keywords": ["hashrace", "iframe", "postmessage", "seamless-wallet", "popup"],
   "repository": {

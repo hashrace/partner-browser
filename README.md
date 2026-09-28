@@ -16,7 +16,7 @@ Consumers install directly from GitHub via git ref:
 ```json
 {
   "dependencies": {
-    "@hashrace/partner-browser": "github:hashrace/partner-browser#v0.2.0"
+    "@hashrace/partner-browser": "github:hashrace/partner-browser#v0.3.0"
   }
 }
 ```

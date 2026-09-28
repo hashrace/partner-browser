@@ -3,7 +3,7 @@
 All notable changes to `@hashrace/partner-browser` are documented here.
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## Unreleased
+## v0.3.0 — 2026-09-28
 
 ### Security
 
